@@ -2,6 +2,13 @@ import React, { useEffect, useState, useRef } from "react";
 import { useParams } from "react-router-dom";
 import "./Play.css"; // Import the CSS file
 
+const API_KEYS = [
+  "55e68a52fbmsh91bd7fe14f7572fp1ea3d3jsn906b3acc22ed",
+  "4a2885a20cmshc882f79ada16c13p17bbc2jsncb4912134c39",
+];
+
+const MAX_REQUESTS_PER_DAY = 90;
+
 function Play() {
   const { videoId } = useParams();
   const [lyrics, setLyrics] = useState([]);
@@ -10,8 +17,10 @@ function Play() {
   const [currentTime, setCurrentTime] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [videoSrc, setVideoSrc] = useState(null); // State for video source
+  const [currentKeyIndex, setCurrentKeyIndex] = useState(0); // Track current API key index
+  const [requestCount, setRequestCount] = useState(0); // Track request count
   const timerRef = useRef(null);
-  const timeoutRef = useRef(null);
+  const iframeRef = useRef(null); // Ref for the iframe
 
   // Fetch captions
   useEffect(() => {
@@ -22,12 +31,16 @@ function Play() {
           {
             method: "GET",
             headers: {
-              "x-rapidapi-key":
-                "4a2885a20cmshc882f79ada16c13p17bbc2jsncb4912134c39",
+              "x-rapidapi-key": API_KEYS[currentKeyIndex],
               "x-rapidapi-host": "subtitles-for-youtube.p.rapidapi.com",
             },
           }
         );
+
+        if (response.status === 429) {
+          setCurrentKeyIndex((prevIndex) => (prevIndex + 1) % API_KEYS.length);
+          return; // Retry fetching captions with new key
+        }
 
         const data = await response.json();
         console.log(data);
@@ -39,27 +52,72 @@ function Play() {
         }));
 
         setLyrics(parsedLyrics);
+        setRequestCount((prevCount) => prevCount + 1);
+
+        if (requestCount >= MAX_REQUESTS_PER_DAY) {
+          setCurrentKeyIndex((prevIndex) => (prevIndex + 1) % API_KEYS.length);
+          setRequestCount(0);
+        }
       } catch (error) {
         console.error("Error fetching captions:", error);
       }
     };
 
     fetchCaptions();
-  }, [videoId]);
+  }, [videoId, currentKeyIndex, requestCount]);
 
-  // Start video and timer with a delay
+  // Start video and timer
   const handlePlay = () => {
     setIsPlaying(true);
+    setCurrentTime(0); // Reset the timer to zero
+
     setVideoSrc(
       `https://www.youtube.com/embed/${videoId}?autoplay=1&controls=1`
     );
 
-    // Start timer after 1.5 seconds
-    timeoutRef.current = setTimeout(() => {
-      timerRef.current = setInterval(() => {
-        setCurrentTime((prevTime) => prevTime + 1);
-      }, 1000);
-    }, 1500);
+    // Start or reset the timer
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+    }
+    timerRef.current = setInterval(() => {
+      setCurrentTime((prevTime) => prevTime + 1);
+    }, 1000);
+
+    if (iframeRef.current) {
+      iframeRef.current.contentWindow.postMessage(
+        JSON.stringify({ event: "command", func: "playVideo" }),
+        "*"
+      );
+    }
+  };
+
+  // Stop timer and video
+  const handleStop = () => {
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+    setIsPlaying(false);
+
+    if (iframeRef.current) {
+      iframeRef.current.contentWindow.postMessage(
+        JSON.stringify({ event: "command", func: "pauseVideo" }),
+        "*"
+      );
+    }
+  };
+
+  // Handle click to play/pause video
+  const handleClickVideo = () => {
+    if (iframeRef.current) {
+      iframeRef.current.contentWindow.postMessage(
+        JSON.stringify({
+          event: "command",
+          func: isPlaying ? "pauseVideo" : "playVideo",
+        }),
+        "*"
+      );
+    }
   };
 
   // Update subtitles and current caption based on current time
@@ -73,7 +131,7 @@ function Play() {
       const newSubtitles = [];
       if (currentIndex !== -1) {
         newSubtitles.push(lyrics[currentIndex]);
-        setCurrentCaption(lyrics[currentIndex].text); // Update the current caption
+        setCurrentCaption(lyrics[currentIndex].text);
       }
       if (nextIndex < lyrics.length) {
         newSubtitles.push(lyrics[nextIndex]);
@@ -85,14 +143,11 @@ function Play() {
     updateSubtitles();
   }, [currentTime, lyrics]);
 
-  // Cleanup interval and timeout on component unmount
+  // Cleanup interval on component unmount
   useEffect(() => {
     return () => {
       if (timerRef.current) {
         clearInterval(timerRef.current);
-      }
-      if (timeoutRef.current) {
-        clearTimeout(timeoutRef.current);
       }
     };
   }, []);
@@ -115,30 +170,38 @@ function Play() {
         </button>
       )}
       {isPlaying && videoSrc && (
-        <iframe
-          width="100%"
-          height="500"
-          src={videoSrc}
-          frameBorder="0"
-          allow="autoplay; encrypted-media"
-          allowFullScreen
-          title="YouTube Video Player"
-          style={{ opacity: 0.3, backgroundColor: "black" }}
-        ></iframe>
+        <>
+          <iframe
+            id="youtube-iframe"
+            ref={iframeRef}
+            width="100%"
+            height="500"
+            src={videoSrc}
+            frameBorder="0"
+            allow="autoplay; encrypted-media"
+            allowFullScreen
+            title="YouTube Video Player"
+            style={{ cursor: "pointer" }}
+            onClick={handleClickVideo}
+          ></iframe>
+          <div className="subtitle-overlay">
+            {currentSubtitles.map((line, index) => (
+              <p
+                key={index}
+                className={`subtitle-text ${
+                  line.text === currentCaption ? "current-caption" : ""
+                }`}
+              >
+                {line.text}
+              </p>
+            ))}
+          </div>
+          <div className="time-display">{formatTime(currentTime)}</div>
+          <button onClick={handleStop} className="stop-button">
+            Stop Timer
+          </button>
+        </>
       )}
-      <div className="subtitle-overlay">
-        {currentSubtitles.map((line, index) => (
-          <p
-            key={index}
-            className={`subtitle-text ${
-              line.text === currentCaption ? "current-caption" : ""
-            }`}
-          >
-            {line.text}
-          </p>
-        ))}
-      </div>
-      <div className="time-display">{formatTime(currentTime)}</div>
     </div>
   );
 }

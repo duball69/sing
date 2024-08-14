@@ -54,3 +54,11 @@
   .current-caption {
     color: orange; /* Highlight current caption in orange */
   }
+
+  .stop-button {
+    background-color: #dc3545; /* Bootstrap danger color or any color you prefer */
+  }
+  
+  .stop-button:hover {
+    background-color: #c82333; /* Darker shade for hover effect */
+  }

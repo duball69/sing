@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef } from "react";
 import { useParams } from "react-router-dom";
-import "./Play.css"; // Import the CSS file
+import "./Play.css";
 
 const API_KEYS = [
   "55e68a52fbmsh91bd7fe14f7572fp1ea3d3jsn906b3acc22ed",
@@ -13,14 +13,14 @@ function Play() {
   const { videoId } = useParams();
   const [lyrics, setLyrics] = useState([]);
   const [currentSubtitles, setCurrentSubtitles] = useState([]);
-  const [currentCaption, setCurrentCaption] = useState(""); // State for the current top caption
+  const [currentCaption, setCurrentCaption] = useState("");
   const [currentTime, setCurrentTime] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [videoSrc, setVideoSrc] = useState(null); // State for video source
-  const [currentKeyIndex, setCurrentKeyIndex] = useState(0); // Track current API key index
-  const [requestCount, setRequestCount] = useState(0); // Track request count
+  const [videoSrc, setVideoSrc] = useState(null);
+  const [currentKeyIndex, setCurrentKeyIndex] = useState(0);
+  const [requestCount, setRequestCount] = useState(0);
   const timerRef = useRef(null);
-  const iframeRef = useRef(null); // Ref for the iframe
+  const iframeRef = useRef(null);
 
   // Fetch captions
   useEffect(() => {
@@ -39,7 +39,7 @@ function Play() {
 
         if (response.status === 429) {
           setCurrentKeyIndex((prevIndex) => (prevIndex + 1) % API_KEYS.length);
-          return; // Retry fetching captions with new key
+          return;
         }
 
         const data = await response.json();
@@ -69,13 +69,12 @@ function Play() {
   // Start video and timer
   const handlePlay = () => {
     setIsPlaying(true);
-    setCurrentTime(0); // Reset the timer to zero
+    setCurrentTime(0);
 
     setVideoSrc(
       `https://www.youtube.com/embed/${videoId}?autoplay=1&controls=1`
     );
 
-    // Start or reset the timer
     if (timerRef.current) {
       clearInterval(timerRef.current);
     }

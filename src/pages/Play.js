@@ -27,7 +27,7 @@ function Play() {
     const fetchCaptions = async () => {
       try {
         const response = await fetch(
-          `https://subtitles-for-youtube.p.rapidapi.com/subtitles/${videoId}?type=None&translated=None`,
+          `https://subtitles-for-youtube.p.rapidapi.com/subtitles/${videoId}?type=None&translated=Original`,
           {
             method: "GET",
             headers: {

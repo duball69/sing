@@ -166,20 +166,11 @@ const MP3PitchExtractionPage = () => {
 
   const handleFetchMp3 = async () => {
     try {
-      const response = await axios.get(
-        "https://cors-anywhere.herokuapp.com/https://youtube-mp3-downloader2.p.rapidapi.com/ytmp3/ytmp3/custom/",
-        {
-          params: {
-            url: youtubeLink,
-            quality: "320",
-          },
-          headers: {
-            "x-rapidapi-key":
-              "e0a4a7e079msh2d3bd6eecf1c74fp12ba85jsnaab86c305b67",
-            "x-rapidapi-host": "youtube-mp3-downloader2.p.rapidapi.com",
-          },
-        }
-      );
+      const response = await axios.get("http://localhost:5000/fetch-mp3", {
+        params: {
+          url: youtubeLink,
+        },
+      });
       // Extract the MP3 URL from the response
       const mp3Url = response.data.dlink;
 

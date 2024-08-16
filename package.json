@@ -7,6 +7,8 @@
     "@testing-library/react": "^13.4.0",
     "@testing-library/user-event": "^13.5.0",
     "axios": "^1.7.4",
+    "cors-anywhere": "^0.4.4",
+    "fft-js": "^0.0.12",
     "p5": "^1.10.0",
     "pitchfinder": "^2.3.2",
     "react": "^18.3.1",

@@ -1,86 +1,48 @@
 import React, { useState, useRef, useEffect } from "react";
-import axios from "axios";
 
-// Pitch detection algorithm (auto-correlation)
-const autoCorrelate = (buffer, sampleRate) => {
-  let SIZE = buffer.length;
-  let MAX_SAMPLES = Math.floor(SIZE / 2);
-  let bestOffset = -1;
-  let bestCorrelation = 0;
-  let rms = 0;
-  let foundGoodCorrelation = false;
-  let correlations = new Array(MAX_SAMPLES);
+// Pitch detection algorithm using FFT
+const detectPitchFFT = (dataArray, sampleRate) => {
+  const fft = require("fft-js").fft;
+  const fftUtil = require("fft-js").util;
 
-  for (let i = 0; i < SIZE; i++) {
-    let val = buffer[i];
-    rms += val * val;
-  }
-  rms = Math.sqrt(rms / SIZE);
-  if (rms < 0.01) return -1;
+  const phasors = fft(dataArray);
+  const magnitudes = fftUtil.fftMag(phasors);
+  const frequencies = fftUtil.fftFreq(phasors, sampleRate);
 
-  let lastCorrelation = 1;
-  for (let offset = 0; offset < MAX_SAMPLES; offset++) {
-    let correlation = 0;
+  // Find the peak frequency
+  const maxMagnitude = Math.max(...magnitudes);
+  const indexOfMax = magnitudes.indexOf(maxMagnitude);
 
-    for (let i = 0; i < MAX_SAMPLES; i++) {
-      correlation += Math.abs(buffer[i] - buffer[i + offset]);
-    }
-    correlation = 1 - correlation / MAX_SAMPLES;
-    correlations[offset] = correlation;
-    if (correlation > 0.9 && correlation > lastCorrelation) {
-      foundGoodCorrelation = true;
-      if (correlation > bestCorrelation) {
-        bestCorrelation = correlation;
-        bestOffset = offset;
-      }
-    } else if (foundGoodCorrelation) {
-      let shift =
-        (correlations[bestOffset + 1] - correlations[bestOffset - 1]) /
-        correlations[bestOffset];
-      return sampleRate / (bestOffset + 8 * shift);
-    }
-    lastCorrelation = correlation;
-  }
-  if (bestCorrelation > 0.01) {
-    return sampleRate / bestOffset;
-  }
-  return -1;
+  return frequencies[indexOfMax];
 };
 
-// Define expanded pitch ranges
+// Define pitch ranges up to 1000 Hz
 const pitchRanges = [
-  { label: "250 Hz", min: 250, max: 400 },
-  { label: "400 Hz", min: 400, max: 600 },
-  { label: "600 Hz", min: 600, max: 800 },
-  { label: "800 Hz", min: 800, max: 1000 },
-  { label: "1000 Hz", min: 1000, max: 1500 },
-  { label: "1500 Hz", min: 1500, max: 2000 },
-  { label: "2000 Hz", min: 2000, max: 2500 },
-  { label: "2500 Hz", min: 2500, max: 3000 },
-  { label: "3000 Hz", min: 3000, max: 3500 },
-  { label: "3500 Hz", min: 3500, max: 4000 },
-  { label: "4000 Hz", min: 4000, max: 4500 },
-  { label: "4500 Hz", min: 4500, max: 5000 },
-  { label: "5000 Hz", min: 5000, max: 5500 },
-  { label: "5500 Hz", min: 5500, max: 6000 },
-  { label: "6000 Hz", min: 6000, max: 7000 }, // Extend beyond range to handle high frequencies
+  { label: "50 Hz", min: 50, max: 100 },
+  { label: "100 Hz", min: 100, max: 200 },
+  { label: "200 Hz", min: 200, max: 300 },
+  { label: "300 Hz", min: 300, max: 400 },
+  { label: "400 Hz", min: 400, max: 500 },
+  { label: "500 Hz", min: 500, max: 600 },
+  { label: "600 Hz", min: 600, max: 700 },
+  { label: "700 Hz", min: 700, max: 800 },
+  { label: "800 Hz", min: 800, max: 900 },
+  { label: "900 Hz", min: 900, max: 1000 },
 ];
 
 const MP3PitchExtractionPage = () => {
-  const [youtubeLink, setYoutubeLink] = useState("");
-  const [mp3Url, setMp3Url] = useState(null);
   const [pitch, setPitch] = useState(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [currentRange, setCurrentRange] = useState(null);
-  const [pitchHistory, setPitchHistory] = useState([]);
-  const [lastPitch, setLastPitch] = useState(null);
+  const [pitchHistory, setPitchHistory] = useState([]); // For averaging
+  const [lastPitch, setLastPitch] = useState(null); // Added lastPitch state
   const audioRef = useRef(null);
   const audioContextRef = useRef(null);
   const analyserRef = useRef(null);
   const dataArrayRef = useRef(null);
-  const smoothingFactor = 0.98;
-  const updateInterval = 200;
-  const historySize = 10;
+  const smoothingFactor = 0.98; // Further increase smoothing factor
+  const updateInterval = 200; // Increase interval to make pitch changes less frequent
+  const historySize = 10; // Number of previous pitch values to average
 
   useEffect(() => {
     if (isAnalyzing) {
@@ -116,16 +78,17 @@ const MP3PitchExtractionPage = () => {
       const currentTime = Date.now();
       if (currentTime - lastUpdateTime >= updateInterval) {
         analyser.getFloatTimeDomainData(dataArray);
-        const pitchValue = autoCorrelate(
+        const pitchValue = detectPitchFFT(
           dataArray,
           audioContextRef.current.sampleRate
         );
 
         if (pitchValue !== -1) {
+          // Smooth the pitch value
           setPitchHistory((prev) => {
             const newHistory = [...prev, pitchValue];
             if (newHistory.length > historySize) {
-              newHistory.shift();
+              newHistory.shift(); // Remove oldest value
             }
             const averagePitch =
               newHistory.reduce((sum, val) => sum + val, 0) / newHistory.length;
@@ -135,6 +98,7 @@ const MP3PitchExtractionPage = () => {
               : averagePitch;
             setLastPitch(smoothedPitch);
 
+            // Determine which pitch range the smoothed pitch falls into
             const range = pitchRanges.find(
               (r) => smoothedPitch >= r.min && smoothedPitch <= r.max
             );
@@ -143,10 +107,10 @@ const MP3PitchExtractionPage = () => {
             return newHistory;
           });
         } else {
-          setLastPitch(null);
+          setLastPitch(null); // Reset smoothing if no pitch detected
         }
 
-        lastUpdateTime = currentTime;
+        lastUpdateTime = currentTime; // Update last update time
       }
 
       if (isAnalyzing) {
@@ -161,27 +125,6 @@ const MP3PitchExtractionPage = () => {
     if (audioContextRef.current) {
       audioContextRef.current.close();
       audioContextRef.current = null;
-    }
-  };
-
-  const handleFetchMp3 = async () => {
-    try {
-      const response = await axios.get("http://localhost:5000/fetch-mp3", {
-        params: {
-          url: youtubeLink,
-        },
-      });
-      // Extract the MP3 URL from the response
-      const mp3Url = response.data.dlink;
-
-      if (mp3Url) {
-        setMp3Url(mp3Url);
-        setIsAnalyzing(true);
-      } else {
-        console.error("Failed to retrieve MP3 URL from the API response.");
-      }
-    } catch (error) {
-      console.error("Error fetching MP3:", error);
     }
   };
 
@@ -205,65 +148,48 @@ const MP3PitchExtractionPage = () => {
 
   return (
     <div style={{ textAlign: "center", marginTop: "50px" }}>
-      <h1>YouTube MP3 Pitch Detection</h1>
-      <input
-        type="text"
-        value={youtubeLink}
-        onChange={(e) => setYoutubeLink(e.target.value)}
-        placeholder="Enter YouTube URL"
-        style={{ padding: "10px", fontSize: "16px", marginBottom: "20px" }}
-      />
-      <button
-        onClick={handleFetchMp3}
-        style={{ padding: "10px 20px", fontSize: "16px", marginTop: "20px" }}
-      >
-        Fetch and Analyze
-      </button>
-      {mp3Url && (
-        <>
-          <audio ref={audioRef} src={mp3Url} controls></audio>
-          <button
-            onClick={() => setIsAnalyzing(true)}
-            style={{
-              padding: "10px 20px",
-              fontSize: "16px",
-              marginTop: "20px",
-            }}
-          >
-            Start Analyzing
-          </button>
-        </>
-      )}
+      <h1>MP3 Pitch Detection</h1>
+      <input type="file" accept=".mp3" onChange={handleFileChange} />
+      <audio ref={audioRef} controls></audio>
+
       <div
         style={{
           marginTop: "20px",
           position: "relative",
           height: "200px",
           width: "100%",
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "flex-end",
         }}
       >
-        {pitchRanges.map((range, index) => (
-          <div
-            key={index}
-            style={{
-              position: "absolute",
-              left: `${(index / pitchRanges.length) * 100}%`,
-              width: `${100 / pitchRanges.length}%`,
-              bottom: "0",
-              height: "100%",
-              backgroundColor:
-                currentRange === range.label ? "lightblue" : "lightgrey",
-              border: "1px solid black",
-              boxSizing: "border-box",
-              textAlign: "center",
-              lineHeight: "200px",
-              color: "black",
-              fontSize: "14px",
-            }}
-          >
-            {range.label}
-          </div>
-        ))}
+        {pitchRanges.map((range, index) => {
+          const rangeLabel = range.label;
+          const isActive = currentRange === rangeLabel;
+          const barHeight = isActive ? "100%" : "10%"; // Adjust bar height for active range
+          return (
+            <div
+              key={index}
+              style={{
+                position: "relative",
+                width: `${100 / pitchRanges.length}%`,
+                height: barHeight,
+                backgroundColor: isActive ? "lightblue" : "lightgrey",
+                border: "1px solid black",
+                boxSizing: "border-box",
+                textAlign: "center",
+                lineHeight: "200px",
+                color: "black",
+                fontSize: "14px",
+                display: "flex",
+                alignItems: "flex-end",
+                justifyContent: "center",
+              }}
+            >
+              {rangeLabel}
+            </div>
+          );
+        })}
         {pitch !== null && (
           <div
             style={{
@@ -282,6 +208,9 @@ const MP3PitchExtractionPage = () => {
               lineHeight: "200px",
               color: "white",
               fontSize: "16px",
+              display: "flex",
+              alignItems: "flex-end",
+              justifyContent: "center",
             }}
           >
             {currentRange}

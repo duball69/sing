@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
+import axios from "axios";
 
 // Pitch detection algorithm (auto-correlation)
 const autoCorrelate = (buffer, sampleRate) => {
@@ -66,18 +67,20 @@ const pitchRanges = [
 ];
 
 const MP3PitchExtractionPage = () => {
+  const [youtubeLink, setYoutubeLink] = useState("");
+  const [mp3Url, setMp3Url] = useState(null);
   const [pitch, setPitch] = useState(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [currentRange, setCurrentRange] = useState(null);
-  const [pitchHistory, setPitchHistory] = useState([]); // For averaging
-  const [lastPitch, setLastPitch] = useState(null); // Added lastPitch state
+  const [pitchHistory, setPitchHistory] = useState([]);
+  const [lastPitch, setLastPitch] = useState(null);
   const audioRef = useRef(null);
   const audioContextRef = useRef(null);
   const analyserRef = useRef(null);
   const dataArrayRef = useRef(null);
-  const smoothingFactor = 0.98; // Further increase smoothing factor
-  const updateInterval = 200; // Increase interval to make pitch changes less frequent
-  const historySize = 10; // Number of previous pitch values to average
+  const smoothingFactor = 0.98;
+  const updateInterval = 200;
+  const historySize = 10;
 
   useEffect(() => {
     if (isAnalyzing) {
@@ -119,11 +122,10 @@ const MP3PitchExtractionPage = () => {
         );
 
         if (pitchValue !== -1) {
-          // Smooth the pitch value
           setPitchHistory((prev) => {
             const newHistory = [...prev, pitchValue];
             if (newHistory.length > historySize) {
-              newHistory.shift(); // Remove oldest value
+              newHistory.shift();
             }
             const averagePitch =
               newHistory.reduce((sum, val) => sum + val, 0) / newHistory.length;
@@ -133,7 +135,6 @@ const MP3PitchExtractionPage = () => {
               : averagePitch;
             setLastPitch(smoothedPitch);
 
-            // Determine which pitch range the smoothed pitch falls into
             const range = pitchRanges.find(
               (r) => smoothedPitch >= r.min && smoothedPitch <= r.max
             );
@@ -142,10 +143,10 @@ const MP3PitchExtractionPage = () => {
             return newHistory;
           });
         } else {
-          setLastPitch(null); // Reset smoothing if no pitch detected
+          setLastPitch(null);
         }
 
-        lastUpdateTime = currentTime; // Update last update time
+        lastUpdateTime = currentTime;
       }
 
       if (isAnalyzing) {
@@ -160,6 +161,36 @@ const MP3PitchExtractionPage = () => {
     if (audioContextRef.current) {
       audioContextRef.current.close();
       audioContextRef.current = null;
+    }
+  };
+
+  const handleFetchMp3 = async () => {
+    try {
+      const response = await axios.get(
+        "https://cors-anywhere.herokuapp.com/https://youtube-mp3-downloader2.p.rapidapi.com/ytmp3/ytmp3/custom/",
+        {
+          params: {
+            url: youtubeLink,
+            quality: "320",
+          },
+          headers: {
+            "x-rapidapi-key":
+              "e0a4a7e079msh2d3bd6eecf1c74fp12ba85jsnaab86c305b67",
+            "x-rapidapi-host": "youtube-mp3-downloader2.p.rapidapi.com",
+          },
+        }
+      );
+      // Extract the MP3 URL from the response
+      const mp3Url = response.data.dlink;
+
+      if (mp3Url) {
+        setMp3Url(mp3Url);
+        setIsAnalyzing(true);
+      } else {
+        console.error("Failed to retrieve MP3 URL from the API response.");
+      }
+    } catch (error) {
+      console.error("Error fetching MP3:", error);
     }
   };
 
@@ -183,15 +214,35 @@ const MP3PitchExtractionPage = () => {
 
   return (
     <div style={{ textAlign: "center", marginTop: "50px" }}>
-      <h1>MP3 Pitch Detection</h1>
-      <input type="file" accept=".mp3" onChange={handleFileChange} />
-      <audio ref={audioRef} controls></audio>
+      <h1>YouTube MP3 Pitch Detection</h1>
+      <input
+        type="text"
+        value={youtubeLink}
+        onChange={(e) => setYoutubeLink(e.target.value)}
+        placeholder="Enter YouTube URL"
+        style={{ padding: "10px", fontSize: "16px", marginBottom: "20px" }}
+      />
       <button
-        onClick={() => setIsAnalyzing(true)}
+        onClick={handleFetchMp3}
         style={{ padding: "10px 20px", fontSize: "16px", marginTop: "20px" }}
       >
-        Start Analyzing
+        Fetch and Analyze
       </button>
+      {mp3Url && (
+        <>
+          <audio ref={audioRef} src={mp3Url} controls></audio>
+          <button
+            onClick={() => setIsAnalyzing(true)}
+            style={{
+              padding: "10px 20px",
+              fontSize: "16px",
+              marginTop: "20px",
+            }}
+          >
+            Start Analyzing
+          </button>
+        </>
+      )}
       <div
         style={{
           marginTop: "20px",

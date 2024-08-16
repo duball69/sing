@@ -1,232 +1,299 @@
 import React, { useState, useRef, useEffect } from "react";
+import { fft, util as fftUtil } from "fft-js";
 
-// Define pitch ranges for visualization
+// Pitch detection algorithm using FFT
+const detectPitchFFT = (dataArray, sampleRate) => {
+  const phasors = fft(dataArray);
+  const magnitudes = fftUtil.fftMag(phasors);
+  const frequencies = fftUtil.fftFreq(phasors, sampleRate);
+
+  // Find the peak frequency
+  const maxMagnitude = Math.max(...magnitudes);
+  const indexOfMax = magnitudes.indexOf(maxMagnitude);
+
+  return frequencies[indexOfMax];
+};
+
+// Define pitch ranges up to 1000 Hz with 5 ranges
 const pitchRanges = [
-  { label: "50 Hz", min: 50, max: 100 },
-  { label: "100 Hz", min: 100, max: 200 },
-  { label: "200 Hz", min: 200, max: 300 },
-  { label: "300 Hz", min: 300, max: 400 },
-  { label: "400 Hz", min: 400, max: 500 },
-  { label: "500 Hz", min: 500, max: 600 },
-  { label: "600 Hz", min: 600, max: 700 },
-  { label: "700 Hz", min: 700, max: 800 },
-  { label: "800 Hz", min: 800, max: 900 },
-  { label: "900 Hz", min: 900, max: 1000 },
+  { label: "50-200 Hz", min: 50, max: 200 },
+  { label: "200-400 Hz", min: 200, max: 400 },
+  { label: "400-600 Hz", min: 400, max: 600 },
+  { label: "600-800 Hz", min: 600, max: 800 },
+  { label: "800-1000 Hz", min: 800, max: 1000 },
 ];
 
-const PitchDetectionPage = () => {
-  const [pitch, setPitch] = useState(null);
-  const [isListening, setIsListening] = useState(false);
-  const [currentRange, setCurrentRange] = useState(null);
-  const [lastPitch, setLastPitch] = useState(null); // For smoothing
-  const audioContextRef = useRef(null);
-  const analyserRef = useRef(null);
-  const dataArrayRef = useRef(null);
-  const smoothingFactor = 0.98; // Smoothing factor for pitch values
-  const updateInterval = 200; // Interval to update pitch detection (ms)
-  const minPitchThreshold = 50; // Minimum pitch threshold in Hz to ignore noise
-  const maxPitchThreshold = 2000; // Maximum pitch threshold in Hz
+const MP3PitchExtractionPage = () => {
+  const [micPitch, setMicPitch] = useState(null);
+  const [mp3Pitch, setMp3Pitch] = useState(null);
+  const [currentMicRange, setCurrentMicRange] = useState(null);
+  const [currentMp3Range, setCurrentMp3Range] = useState(null);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const audioRef = useRef(null);
+  const micAudioContextRef = useRef(null);
+  const mp3AudioContextRef = useRef(null);
+  const micAnalyserRef = useRef(null);
+  const mp3AnalyserRef = useRef(null);
+  const micDataArrayRef = useRef(null);
+  const mp3DataArrayRef = useRef(null);
+  const smoothingFactor = 0.99; // Increase smoothing factor to further reduce sensitivity
+  const updateInterval = 500; // Increase update interval to slow down pitch updates
 
   useEffect(() => {
-    if (isListening) {
+    if (isAnalyzing) {
       startPitchDetection();
     }
     return () => {
       stopPitchDetection();
     };
-  }, [isListening]);
+  }, [isAnalyzing]);
 
-  const startPitchDetection = async () => {
-    audioContextRef.current = new (window.AudioContext ||
+  const startPitchDetection = () => {
+    startMicPitchDetection();
+    startMp3PitchDetection();
+  };
+
+  const startMicPitchDetection = async () => {
+    micAudioContextRef.current = new (window.AudioContext ||
       window.webkitAudioContext)();
-    analyserRef.current = audioContextRef.current.createAnalyser();
+    micAnalyserRef.current = micAudioContextRef.current.createAnalyser();
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const source = audioContextRef.current.createMediaStreamSource(stream);
-      source.connect(analyserRef.current);
-      dataArrayRef.current = new Float32Array(analyserRef.current.fftSize);
-      detectPitch();
+      const source = micAudioContextRef.current.createMediaStreamSource(stream);
+      source.connect(micAnalyserRef.current);
+      micDataArrayRef.current = new Float32Array(
+        micAnalyserRef.current.fftSize
+      );
+      detectMicPitch();
     } catch (err) {
       console.error("Error accessing microphone", err);
     }
   };
 
-  const detectPitch = () => {
-    const analyser = analyserRef.current;
-    const dataArray = dataArrayRef.current;
+  const detectMicPitch = () => {
+    const micAnalyser = micAnalyserRef.current;
+    const micDataArray = micDataArrayRef.current;
+    let lastUpdateTime = Date.now();
 
-    const updatePitch = () => {
-      analyser.getFloatTimeDomainData(dataArray);
-      const pitchValue = autoCorrelate(
-        dataArray,
-        audioContextRef.current.sampleRate
-      );
-
-      if (pitchValue > minPitchThreshold && pitchValue < maxPitchThreshold) {
-        const smoothedPitch = lastPitch
-          ? lastPitch * smoothingFactor + pitchValue * (1 - smoothingFactor)
-          : pitchValue;
-
-        setLastPitch(smoothedPitch);
-
-        const range = pitchRanges.find(
-          (r) => smoothedPitch >= r.min && smoothedPitch <= r.max
+    const updateMicPitch = () => {
+      const currentTime = Date.now();
+      if (currentTime - lastUpdateTime >= updateInterval) {
+        micAnalyser.getFloatTimeDomainData(micDataArray);
+        const pitchValue = detectPitchFFT(
+          micDataArray,
+          micAudioContextRef.current.sampleRate
         );
-        setCurrentRange(range ? range.label : "Unknown");
-        setPitch(smoothedPitch);
-      } else {
-        setLastPitch(null); // Reset smoothing if no valid pitch detected
-        setPitch(null);
+
+        if (pitchValue !== -1) {
+          const smoothedPitch =
+            pitchValue * smoothingFactor +
+            (micPitch || pitchValue) * (1 - smoothingFactor);
+          setMicPitch(smoothedPitch);
+
+          // Determine which pitch range the smoothed pitch falls into
+          const range = pitchRanges.find(
+            (r) => smoothedPitch >= r.min && smoothedPitch <= r.max
+          );
+          setCurrentMicRange(range ? range.label : "Unknown");
+        }
+
+        lastUpdateTime = currentTime;
       }
 
-      setTimeout(() => {
-        if (isListening) {
-          requestAnimationFrame(updatePitch);
-        }
-      }, updateInterval);
+      if (isAnalyzing) {
+        requestAnimationFrame(updateMicPitch);
+      }
     };
 
-    updatePitch();
+    updateMicPitch();
+  };
+
+  const startMp3PitchDetection = () => {
+    mp3AudioContextRef.current = new (window.AudioContext ||
+      window.webkitAudioContext)();
+    mp3AnalyserRef.current = mp3AudioContextRef.current.createAnalyser();
+    const source = mp3AudioContextRef.current.createMediaElementSource(
+      audioRef.current
+    );
+    source.connect(mp3AnalyserRef.current);
+    mp3AnalyserRef.current.connect(mp3AudioContextRef.current.destination);
+    mp3DataArrayRef.current = new Float32Array(mp3AnalyserRef.current.fftSize);
+    detectMp3Pitch();
+  };
+
+  const detectMp3Pitch = () => {
+    const mp3Analyser = mp3AnalyserRef.current;
+    const mp3DataArray = mp3DataArrayRef.current;
+    let lastUpdateTime = Date.now();
+
+    const updateMp3Pitch = () => {
+      const currentTime = Date.now();
+      if (currentTime - lastUpdateTime >= updateInterval) {
+        mp3Analyser.getFloatTimeDomainData(mp3DataArray);
+        const pitchValue = detectPitchFFT(
+          mp3DataArray,
+          mp3AudioContextRef.current.sampleRate
+        );
+
+        if (pitchValue !== -1) {
+          const smoothedPitch =
+            pitchValue * smoothingFactor +
+            (mp3Pitch || pitchValue) * (1 - smoothingFactor);
+          setMp3Pitch(smoothedPitch);
+
+          // Determine which pitch range the smoothed pitch falls into
+          const range = pitchRanges.find(
+            (r) => smoothedPitch >= r.min && smoothedPitch <= r.max
+          );
+          setCurrentMp3Range(range ? range.label : "Unknown");
+        }
+
+        lastUpdateTime = currentTime;
+      }
+
+      if (isAnalyzing) {
+        requestAnimationFrame(updateMp3Pitch);
+      }
+    };
+
+    updateMp3Pitch();
   };
 
   const stopPitchDetection = () => {
-    if (audioContextRef.current) {
-      audioContextRef.current.close();
-      audioContextRef.current = null;
+    if (micAudioContextRef.current) {
+      micAudioContextRef.current.close();
+      micAudioContextRef.current = null;
+    }
+    if (mp3AudioContextRef.current) {
+      mp3AudioContextRef.current.close();
+      mp3AudioContextRef.current = null;
     }
   };
 
-  const startListening = () => {
-    setIsListening(true);
-  };
-
-  // Improved auto-correlation algorithm with windowing
-  const autoCorrelate = (buffer, sampleRate) => {
-    const SIZE = buffer.length;
-    const MAX_SAMPLES = Math.floor(SIZE / 2);
-    const windowedBuffer = applyHammingWindow(buffer);
-    let bestOffset = -1;
-    let bestCorrelation = 0;
-    let rms = 0;
-    let foundGoodCorrelation = false;
-    let correlations = new Array(MAX_SAMPLES);
-
-    // Calculate root mean square of the signal
-    for (let i = 0; i < SIZE; i++) {
-      let val = windowedBuffer[i];
-      rms += val * val;
+  const handleFileChange = (event) => {
+    const file = event.target.files[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const arrayBuffer = e.target.result;
+        const audioContext = new (window.AudioContext ||
+          window.webkitAudioContext)();
+        audioContext.decodeAudioData(arrayBuffer, (audioBuffer) => {
+          audioRef.current.src = URL.createObjectURL(file);
+          audioRef.current.load();
+          setIsAnalyzing(true);
+        });
+      };
+      reader.readAsArrayBuffer(file);
     }
-    rms = Math.sqrt(rms / SIZE);
-    if (rms < 0.01) return -1; // Not enough signal
-
-    let lastCorrelation = 1;
-    for (let offset = 0; offset < MAX_SAMPLES; offset++) {
-      let correlation = 0;
-
-      for (let i = 0; i < MAX_SAMPLES; i++) {
-        correlation += Math.abs(windowedBuffer[i] - windowedBuffer[i + offset]);
-      }
-      correlation = 1 - correlation / MAX_SAMPLES;
-      correlations[offset] = correlation;
-
-      if (correlation > 0.9 && correlation > lastCorrelation) {
-        foundGoodCorrelation = true;
-        if (correlation > bestCorrelation) {
-          bestCorrelation = correlation;
-          bestOffset = offset;
-        }
-      } else if (foundGoodCorrelation) {
-        let shift =
-          (correlations[bestOffset + 1] - correlations[bestOffset - 1]) /
-          correlations[bestOffset];
-        return sampleRate / (bestOffset + 8 * shift);
-      }
-      lastCorrelation = correlation;
-    }
-    if (bestCorrelation > 0.01) {
-      return sampleRate / bestOffset;
-    }
-    return -1;
-  };
-
-  // Apply Hamming window to the signal
-  const applyHammingWindow = (buffer) => {
-    const SIZE = buffer.length;
-    const window = new Float32Array(SIZE);
-    for (let i = 0; i < SIZE; i++) {
-      window[i] = 0.54 - 0.46 * Math.cos((2 * Math.PI * i) / (SIZE - 1));
-    }
-    return buffer.map((value, index) => value * window[index]);
   };
 
   return (
     <div style={{ textAlign: "center", marginTop: "50px" }}>
-      <h1>SingStar Clone</h1>
-      <button
-        onClick={startListening}
-        style={{ padding: "10px 20px", fontSize: "16px" }}
-      >
-        Start Singing
-      </button>
+      <h1>MP3 and Microphone Pitch Detection</h1>
+      <input type="file" accept=".mp3" onChange={handleFileChange} />
+      <audio ref={audioRef} controls></audio>
+
       <div
         style={{
           marginTop: "20px",
-          position: "relative",
-          height: "200px",
-          width: "100%",
           display: "flex",
           justifyContent: "space-between",
-          alignItems: "flex-end",
         }}
       >
-        {pitchRanges.map((range, index) => {
-          const rangeLabel = range.label;
-          const isActive = currentRange === rangeLabel;
-          const barHeight = isActive ? "100%" : "10%"; // Adjust bar height for active range
-          return (
-            <div
-              key={index}
-              style={{
-                position: "relative",
-                width: `${100 / pitchRanges.length}%`,
-                height: barHeight,
-                backgroundColor: isActive ? "lightblue" : "lightgrey",
-                border: "1px solid black",
-                boxSizing: "border-box",
-                textAlign: "center",
-                lineHeight: "200px",
-                color: "black",
-                fontSize: "14px",
-                display: "flex",
-                alignItems: "flex-end",
-                justifyContent: "center",
-              }}
-            >
-              {rangeLabel}
-            </div>
-          );
-        })}
-        {pitch !== null && pitch !== -1 && (
+        <div style={{ width: "48%" }}>
+          <h2>Microphone Pitch</h2>
           <div
             style={{
-              position: "absolute",
-              left: `${
-                (pitchRanges.findIndex((r) => r.label === currentRange) /
-                  pitchRanges.length) *
-                100
-              }%`,
-              height: "100%",
-              width: "2px",
-              backgroundColor: "red",
-              transform: "translateX(-50%)",
+              position: "relative",
+              height: "200px",
+              width: "100%",
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "flex-end",
             }}
-          ></div>
-        )}
+          >
+            {pitchRanges.map((range, index) => {
+              const isActive = currentMicRange === range.label;
+              const barHeight = isActive ? "100%" : "10%"; // Adjust bar height for active range
+              return (
+                <div
+                  key={index}
+                  style={{
+                    position: "relative",
+                    width: `${100 / pitchRanges.length}%`,
+                    height: barHeight,
+                    backgroundColor: isActive ? "lightblue" : "lightgrey",
+                    border: "1px solid black",
+                    boxSizing: "border-box",
+                    textAlign: "center",
+                    lineHeight: "200px",
+                    color: "black",
+                    fontSize: "14px",
+                    display: "flex",
+                    alignItems: "flex-end",
+                    justifyContent: "center",
+                  }}
+                >
+                  {range.label}
+                </div>
+              );
+            })}
+          </div>
+          <p style={{ fontSize: "24px", marginTop: "20px" }}>
+            Current Pitch:{" "}
+            {micPitch ? micPitch.toFixed(2) : "No pitch detected"} Hz
+          </p>
+        </div>
+
+        <div style={{ width: "48%" }}>
+          <h2>MP3 Pitch</h2>
+          <div
+            style={{
+              position: "relative",
+              height: "200px",
+              width: "100%",
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "flex-end",
+            }}
+          >
+            {pitchRanges.map((range, index) => {
+              const isActive = currentMp3Range === range.label;
+              const barHeight = isActive ? "100%" : "10%"; // Adjust bar height for active range
+              return (
+                <div
+                  key={index}
+                  style={{
+                    position: "relative",
+                    width: `${100 / pitchRanges.length}%`,
+                    height: barHeight,
+                    backgroundColor: isActive ? "lightgreen" : "lightgrey",
+                    border: "1px solid black",
+                    boxSizing: "border-box",
+                    textAlign: "center",
+                    lineHeight: "200px",
+                    color: "black",
+                    fontSize: "14px",
+                    display: "flex",
+                    alignItems: "flex-end",
+                    justifyContent: "center",
+                  }}
+                >
+                  {range.label}
+                </div>
+              );
+            })}
+          </div>
+          <p style={{ fontSize: "24px", marginTop: "20px" }}>
+            Current Pitch:{" "}
+            {mp3Pitch ? mp3Pitch.toFixed(2) : "No pitch detected"} Hz
+          </p>
+        </div>
       </div>
-      <p>Detected Pitch: {pitch !== null ? `${pitch.toFixed(2)} Hz` : "N/A"}</p>
     </div>
   );
 };
 
-export default PitchDetectionPage;
+export default MP3PitchExtractionPage;

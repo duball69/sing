@@ -54,7 +54,7 @@ const PitchVisualizer = ({ micNoteRanges = [], mp3NoteRanges = [] }) => {
           text: "Frequency (Hz)",
         },
         suggestedMin: 0,
-        suggestedMax: 2000, // Adjust max frequency if needed
+        suggestedMax: 1000, // Adjust max frequency if needed
       },
     },
     elements: {

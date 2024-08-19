@@ -39,11 +39,11 @@ function Play() {
   const mp3DataArrayRef = useRef(null);
   const timerRef = useRef(null);
   const iframeRef = useRef(null);
-  const playerRef = useRef(null);
+  const videoRef = useRef(null);
 
   const smoothingFactor = 0.98;
   const updateInterval = 1000; // milliseconds
-  const maxFrequency = 2000; // Set max frequency limit for visualization
+  const maxFrequency = 1000; // Set max frequency limit for visualization
 
   useEffect(() => {
     const fetchCaptions = async () => {
@@ -266,8 +266,9 @@ function Play() {
     setIsPlaying(true);
     setCurrentTime(0);
     setVideoSrc(
-      `https://www.youtube.com/embed/${videoId}?autoplay=1&controls=1`
+      `https://www.youtube.com/embed/${videoId}?autoplay=1&controls=1&mute=1`
     );
+    startPitchDetection();
 
     if (timerRef.current) {
       clearInterval(timerRef.current);
@@ -276,9 +277,11 @@ function Play() {
       setCurrentTime((prevTime) => prevTime + 1);
     }, 1000);
 
-    if (playerRef.current) {
-      playerRef.current.playVideo();
-      playerRef.current.mute(); // Mute the video
+    if (iframeRef.current) {
+      iframeRef.current.contentWindow.postMessage(
+        JSON.stringify({ event: "command", func: "playVideo" }),
+        "*"
+      );
     }
   };
 
@@ -289,41 +292,25 @@ function Play() {
     }
     setIsPlaying(false);
 
-    if (playerRef.current) {
-      playerRef.current.pauseVideo();
+    if (iframeRef.current) {
+      iframeRef.current.contentWindow.postMessage(
+        JSON.stringify({ event: "command", func: "pauseVideo" }),
+        "*"
+      );
     }
   };
 
   const handleClickVideo = () => {
-    if (playerRef.current) {
-      if (isPlaying) {
-        playerRef.current.pauseVideo();
-      } else {
-        playerRef.current.playVideo();
-      }
-    }
-  };
-
-  const onYouTubeIframeAPIReady = () => {
     if (iframeRef.current) {
-      playerRef.current = new window.YT.Player(iframeRef.current, {
-        videoId: videoId,
-        playerVars: { autoplay: 1, controls: 1 },
-        events: {
-          onReady: () => {
-            if (isPlaying) {
-              playerRef.current.playVideo();
-              playerRef.current.mute(); // Mute the video
-            }
-          },
-        },
-      });
+      iframeRef.current.contentWindow.postMessage(
+        JSON.stringify({
+          event: "command",
+          func: isPlaying ? "pauseVideo" : "playVideo",
+        }),
+        "*"
+      );
     }
   };
-
-  useEffect(() => {
-    window.onYouTubeIframeAPIReady = onYouTubeIframeAPIReady;
-  }, [videoId]);
 
   useEffect(() => {
     const updateSubtitles = () => {
@@ -346,10 +333,6 @@ function Play() {
 
     updateSubtitles();
   }, [currentTime, lyrics]);
-
-  const stopPitchDetection = () => {
-    // Add logic to stop pitch detection if necessary
-  };
 
   useEffect(() => {
     return () => {
@@ -385,6 +368,24 @@ function Play() {
       };
       reader.readAsArrayBuffer(file);
     }
+  };
+
+  const stopPitchDetection = () => {
+    if (micAudioContextRef.current) {
+      micAudioContextRef.current.close();
+      micAudioContextRef.current = null;
+    }
+
+    if (mp3AudioContextRef.current) {
+      mp3AudioContextRef.current.close();
+      mp3AudioContextRef.current = null;
+    }
+
+    setIsAnalyzing(false);
+    setMicPitch(null);
+    setMp3Pitch(null);
+    setCurrentMicNote(null);
+    setCurrentMp3Note(null);
   };
 
   return (

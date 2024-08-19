@@ -1,26 +1,8 @@
-import React, { useEffect, useState, useRef } from "react";
-import { useParams } from "react-router-dom";
-import "./Play.css";
+import React, { useState, useEffect, useRef } from "react";
 import PitchVisualizer from "../components/PitchVisualizer";
 import { detectPitchFFT, frequencyToNote } from "../components/utils";
 
-const API_KEYS = [
-  "55e68a52fbmsh91bd7fe14f7572fp1ea3d3jsn906b3acc22ed",
-  "4a2885a20cmshc882f79ada16c13p17bbc2jsncb4912134c39",
-];
-
-const MAX_REQUESTS_PER_DAY = 90;
-
-function Play() {
-  const { videoId } = useParams();
-  const [lyrics, setLyrics] = useState([]);
-  const [currentSubtitles, setCurrentSubtitles] = useState([]);
-  const [currentCaption, setCurrentCaption] = useState("");
-  const [currentTime, setCurrentTime] = useState(0);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [videoSrc, setVideoSrc] = useState(null);
-  const [currentKeyIndex, setCurrentKeyIndex] = useState(0);
-  const [requestCount, setRequestCount] = useState(0);
+const PlayMode = () => {
   const [micPitch, setMicPitch] = useState(null);
   const [mp3Pitch, setMp3Pitch] = useState(null);
   const [currentMicNote, setCurrentMicNote] = useState(null);
@@ -37,56 +19,22 @@ function Play() {
   const mp3AnalyserRef = useRef(null);
   const micDataArrayRef = useRef(null);
   const mp3DataArrayRef = useRef(null);
-  const timerRef = useRef(null);
-  const iframeRef = useRef(null);
-  const playerRef = useRef(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [mp3StartTime, setMp3StartTime] = useState(null);
+  const videoRef = useRef(null); // Reference for the video element
 
   const smoothingFactor = 0.98;
   const updateInterval = 1000; // milliseconds
   const maxFrequency = 2000; // Set max frequency limit for visualization
 
   useEffect(() => {
-    const fetchCaptions = async () => {
-      try {
-        const response = await fetch(
-          `https://subtitles-for-youtube.p.rapidapi.com/subtitles/${videoId}?type=None&translated=Original`,
-          {
-            method: "GET",
-            headers: {
-              "x-rapidapi-key": API_KEYS[currentKeyIndex],
-              "x-rapidapi-host": "subtitles-for-youtube.p.rapidapi.com",
-            },
-          }
-        );
-
-        if (response.status === 429) {
-          setCurrentKeyIndex((prevIndex) => (prevIndex + 1) % API_KEYS.length);
-          return;
-        }
-
-        const data = await response.json();
-        console.log(data);
-
-        const parsedLyrics = data.map((item) => ({
-          start: item.start,
-          end: item.end,
-          text: item.text,
-        }));
-
-        setLyrics(parsedLyrics);
-        setRequestCount((prevCount) => prevCount + 1);
-
-        if (requestCount >= MAX_REQUESTS_PER_DAY) {
-          setCurrentKeyIndex((prevIndex) => (prevIndex + 1) % API_KEYS.length);
-          setRequestCount(0);
-        }
-      } catch (error) {
-        console.error("Error fetching captions:", error);
-      }
+    if (isAnalyzing) {
+      startPitchDetection();
+    }
+    return () => {
+      stopPitchDetection();
     };
-
-    fetchCaptions();
-  }, [videoId, currentKeyIndex, requestCount]);
+  }, [isAnalyzing]);
 
   const startPitchDetection = () => {
     startMicPitchDetection();
@@ -133,6 +81,7 @@ function Play() {
           const note = frequencyToNote(smoothedPitch);
           setCurrentMicNote(note);
 
+          // Use accurate time based on audio playback
           const elapsedTime = audioRef.current
             ? audioRef.current.currentTime
             : 0;
@@ -141,7 +90,7 @@ function Play() {
             {
               note,
               frequency: smoothedPitch.toFixed(2),
-              time: elapsedTime.toFixed(2),
+              time: elapsedTime.toFixed(2), // Use accurate time in seconds
             },
           ]);
           lastUpdateTime = currentTime;
@@ -225,7 +174,9 @@ function Play() {
     if (micNoteRanges.length > 0 && mp3NoteRanges.length > 0) {
       let totalScore = 0;
 
+      // Iterate over microphone notes
       micNoteRanges.forEach((micNote) => {
+        // Find the closest MP3 note within the time window
         const closestMp3Note = mp3NoteRanges.reduce((closest, mp3Note) => {
           const timeDiff = Math.abs(micNote.time - mp3Note.time);
           if (
@@ -238,10 +189,12 @@ function Play() {
         }, null);
 
         if (closestMp3Note) {
+          // Calculate frequency difference
           const frequencyDiff = Math.abs(
             micNote.frequency - closestMp3Note.frequency
           );
 
+          // Update score based on frequency difference
           if (frequencyDiff <= accuracyThreshold) {
             if (frequencyDiff === 0) {
               totalScore += perfectMatchScore; // Perfect Match
@@ -252,6 +205,7 @@ function Play() {
         }
       });
 
+      // Update the score state with the calculated total score
       setScore((prevScore) => prevScore + totalScore);
     }
   };
@@ -262,112 +216,53 @@ function Play() {
     }
   }, [micNoteRanges, mp3NoteRanges]);
 
+  const stopPitchDetection = () => {
+    if (micAudioContextRef.current) {
+      micAudioContextRef.current.close();
+      micAudioContextRef.current = null;
+    }
+    if (mp3AudioContextRef.current) {
+      mp3AudioContextRef.current.close();
+      mp3AudioContextRef.current = null;
+    }
+  };
+
   const handlePlay = () => {
     setIsPlaying(true);
-    setCurrentTime(0);
-    setVideoSrc(
-      `https://www.youtube.com/embed/${videoId}?autoplay=1&controls=1`
-    );
-
-    if (timerRef.current) {
-      clearInterval(timerRef.current);
-    }
-    timerRef.current = setInterval(() => {
-      setCurrentTime((prevTime) => prevTime + 1);
-    }, 1000);
-
-    if (playerRef.current) {
-      playerRef.current.playVideo();
-      playerRef.current.mute(); // Mute the video
-    }
+    setMp3StartTime(audioRef.current.currentTime);
   };
 
-  const handleStop = () => {
-    if (timerRef.current) {
-      clearInterval(timerRef.current);
-      timerRef.current = null;
-    }
+  const handlePause = () => {
     setIsPlaying(false);
-
-    if (playerRef.current) {
-      playerRef.current.pauseVideo();
-    }
   };
 
-  const handleClickVideo = () => {
-    if (playerRef.current) {
-      if (isPlaying) {
-        playerRef.current.pauseVideo();
-      } else {
-        playerRef.current.playVideo();
-      }
-    }
-  };
-
-  const onYouTubeIframeAPIReady = () => {
-    if (iframeRef.current) {
-      playerRef.current = new window.YT.Player(iframeRef.current, {
-        videoId: videoId,
-        playerVars: { autoplay: 1, controls: 1 },
-        events: {
-          onReady: () => {
-            if (isPlaying) {
-              playerRef.current.playVideo();
-              playerRef.current.mute(); // Mute the video
-            }
-          },
-        },
-      });
-    }
+  // Use this for the "ended" event if you want to stop scoring when the MP3 stops
+  const handleEnded = () => {
+    setIsPlaying(false);
   };
 
   useEffect(() => {
-    window.onYouTubeIframeAPIReady = onYouTubeIframeAPIReady;
-  }, [videoId]);
+    if (audioRef.current) {
+      audioRef.current.addEventListener("play", handlePlay);
+      audioRef.current.addEventListener("pause", handlePause);
+      audioRef.current.addEventListener("ended", handleEnded);
 
-  useEffect(() => {
-    const updateSubtitles = () => {
-      const currentIndex = lyrics.findIndex(
-        (line) => currentTime >= line.start && currentTime <= line.end
-      );
-      const nextIndex = currentIndex + 1;
-
-      const newSubtitles = [];
-      if (currentIndex !== -1) {
-        newSubtitles.push(lyrics[currentIndex]);
-        setCurrentCaption(lyrics[currentIndex].text);
-      }
-      if (nextIndex < lyrics.length) {
-        newSubtitles.push(lyrics[nextIndex]);
-      }
-
-      setCurrentSubtitles(newSubtitles);
-    };
-
-    updateSubtitles();
-  }, [currentTime, lyrics]);
-
-  const stopPitchDetection = () => {
-    // Add logic to stop pitch detection if necessary
-  };
-
-  useEffect(() => {
-    return () => {
-      if (timerRef.current) {
-        clearInterval(timerRef.current);
-      }
-      stopPitchDetection();
-    };
+      return () => {
+        audioRef.current.removeEventListener("play", handlePlay);
+        audioRef.current.removeEventListener("pause", handlePause);
+        audioRef.current.removeEventListener("ended", handleEnded);
+      };
+    }
   }, []);
 
-  const formatTime = (seconds) => {
-    const minutes = Math.floor(seconds / 60);
-    const secs = Math.floor(seconds % 60);
-    return `${String(minutes).padStart(2, "0")}:${String(secs).padStart(
-      2,
-      "0"
-    )}`;
-  };
+  useEffect(() => {
+    if (audioRef.current) {
+      audioRef.current.addEventListener("play", handlePlay);
+      return () => {
+        audioRef.current.removeEventListener("play", handlePlay);
+      };
+    }
+  }, []);
 
   const handleFileChange = (event) => {
     const file = event.target.files[0];
@@ -388,81 +283,57 @@ function Play() {
   };
 
   return (
-    <div className="video-container">
-      {!isPlaying && (
-        <button onClick={handlePlay} className="play-button">
-          Play Video
-        </button>
-      )}
-      {isPlaying && videoSrc && (
-        <>
-          <iframe
-            id="youtube-iframe"
-            ref={iframeRef}
-            width="100%"
-            height="500"
-            src={videoSrc}
-            frameBorder="0"
-            allow="autoplay; encrypted-media"
-            allowFullScreen
-            title="YouTube Video Player"
-            style={{ cursor: "pointer" }}
-            onClick={handleClickVideo}
-          ></iframe>
-          <div className="subtitle-overlay">
-            {currentSubtitles.map((line, index) => (
-              <p
-                key={index}
-                className={`subtitle-text ${
-                  line.text === currentCaption ? "current-caption" : ""
-                }`}
-              >
-                {line.text}
-              </p>
-            ))}
-          </div>
+    <div style={{ textAlign: "center", marginTop: "50px" }}>
+      <h1>MP3 and Microphone Pitch Detection</h1>
+      <input type="file" accept=".mp3" onChange={handleFileChange} />
+      <audio ref={audioRef} controls></audio>
+
+      {/* Video element for background playback */}
+      <video
+        ref={videoRef}
+        src="path/to/your/video.mp4"
+        style={{
+          position: "absolute",
+          top: 0,
+          left: 0,
+          width: "100%",
+          height: "100%",
+          zIndex: -1,
+        }}
+        muted
+        autoPlay
+        loop
+      />
+
+      <div
+        style={{
+          marginTop: "20px",
+          display: "flex",
+          justifyContent: "space-between",
+        }}
+      >
+        <div style={{ width: "100%" }}>
+          <h2>Pitch Detector</h2>
           <PitchVisualizer
             micNoteRanges={micNoteRanges}
             mp3NoteRanges={mp3NoteRanges}
-          />
-          <div className="time-display">{formatTime(currentTime)}</div>
-          <button onClick={handleStop} className="stop-button">
-            Stop Timer
-          </button>
-        </>
-      )}
-      <div style={{ textAlign: "center", marginTop: "20px" }}>
-        <h1>MP3 and Microphone Pitch Detection</h1>
-        <input type="file" accept=".mp3" onChange={handleFileChange} />
-        <audio ref={audioRef} controls></audio>
-        <div
-          style={{
-            marginTop: "20px",
-            display: "flex",
-            justifyContent: "space-between",
-          }}
-        >
-          <div style={{ width: "100%" }}>
-            <h2>Pitch Detector</h2>
-            <PitchVisualizer
-              micNoteRanges={micNoteRanges}
-              mp3NoteRanges={mp3NoteRanges}
-            />
-            <p style={{ fontSize: "24px" }}>
-              Note: {micPitch ? currentMicNote : "No note detected"}
-            </p>
-          </div>
+          />{" "}
+          {/* Pass both ranges */}
+          <p style={{ fontSize: "24px" }}>
+            Note: {micPitch ? currentMicNote : "No note detected"}
+          </p>
+        </div>
 
-          <div style={{ width: "48%" }}>
-            <p style={{ fontSize: "24px" }}>
-              Note: {mp3Pitch ? currentMp3Note : "No note detected"}
-            </p>
-            <p style={{ fontSize: "24px" }}>Score: {score}</p>
-          </div>
+        <div style={{ width: "48%" }}>
+          {/* Pass both ranges */}
+          <p style={{ fontSize: "24px" }}>
+            Note: {mp3Pitch ? currentMp3Note : "No note detected"}
+          </p>
+          <p style={{ fontSize: "24px" }}>Score: {score}</p>
         </div>
       </div>
     </div>
   );
-}
+};
 
-export default Play;
+export default PlayMode;

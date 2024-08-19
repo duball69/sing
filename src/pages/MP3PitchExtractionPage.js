@@ -34,6 +34,8 @@ const MP3PitchExtractionPage = () => {
   const [currentMicRange, setCurrentMicRange] = useState(null);
   const [currentMp3Range, setCurrentMp3Range] = useState(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [mp3PitchRanges, setMp3PitchRanges] = useState([]); // New state to save MP3 pitch ranges
+  const [score, setScore] = useState(0); // New state to keep track of the score
   const audioRef = useRef(null);
   const micAudioContextRef = useRef(null);
   const mp3AudioContextRef = useRef(null);
@@ -152,9 +154,16 @@ const MP3PitchExtractionPage = () => {
             (r) => smoothedPitch >= r.min && smoothedPitch <= r.max
           );
           setCurrentMp3Range(range ? range.label : "Unknown");
-        }
 
-        lastUpdateTime = currentTime;
+          // Save the detected pitch range every second
+          if (currentTime - lastUpdateTime >= 1000) {
+            setMp3PitchRanges((prevData) => [
+              ...prevData,
+              range ? range.label : "Unknown",
+            ]);
+            lastUpdateTime = currentTime;
+          }
+        }
       }
 
       if (isAnalyzing) {
@@ -164,6 +173,22 @@ const MP3PitchExtractionPage = () => {
 
     updateMp3Pitch();
   };
+
+  const comparePitchRanges = () => {
+    if (
+      currentMicRange &&
+      currentMp3Range &&
+      currentMicRange === currentMp3Range
+    ) {
+      setScore((prevScore) => prevScore + 1);
+    }
+  };
+
+  useEffect(() => {
+    if (isAnalyzing) {
+      comparePitchRanges();
+    }
+  }, [currentMicRange, currentMp3Range]);
 
   const stopPitchDetection = () => {
     if (micAudioContextRef.current) {
@@ -246,10 +271,6 @@ const MP3PitchExtractionPage = () => {
               );
             })}
           </div>
-          <p style={{ fontSize: "24px", marginTop: "20px" }}>
-            Current Pitch:{" "}
-            {micPitch ? micPitch.toFixed(2) : "No pitch detected"} Hz
-          </p>
         </div>
 
         <div style={{ width: "48%" }}>
@@ -291,10 +312,11 @@ const MP3PitchExtractionPage = () => {
               );
             })}
           </div>
-          <p style={{ fontSize: "24px", marginTop: "20px" }}>
-            Current Pitch:{" "}
-            {mp3Pitch ? mp3Pitch.toFixed(2) : "No pitch detected"} Hz
+
+          <p style={{ fontSize: "14px", marginTop: "10px" }}>
+            Saved MP3 Pitch Ranges: {mp3PitchRanges.join(", ")}
           </p>
+          <p style={{ fontSize: "24px", marginTop: "20px" }}>Score: {score}</p>
         </div>
       </div>
     </div>

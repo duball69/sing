@@ -3,13 +3,19 @@ import { useParams } from "react-router-dom";
 import "./Play.css";
 import PitchVisualizer from "../components/PitchVisualizer";
 import { detectPitchFFT, frequencyToNote } from "../components/utils";
+import DownloadMp3 from "../components/DownloadMp3";
 
 const API_KEYS = [
-  "55e68a52fbmsh91bd7fe14f7572fp1ea3d3jsn906b3acc22ed",
-  "4a2885a20cmshc882f79ada16c13p17bbc2jsncb4912134c39",
+  //"4a2885a20cmshc882f79ada16c13p17bbc2jsncb4912134c39",
+  //"e0a4a7e079msh2d3bd6eecf1c74fp12ba85jsnaab86c305b67",
+  //"55e68a52fbmsh91bd7fe14f7572fp1ea3d3jsn906b3acc22ed",
 ];
 
-const MAX_REQUESTS_PER_DAY = 90;
+const MAX_REQUESTS_PER_MONTH = 35;
+const RESET_INTERVAL = 30 * 24 * 60 * 60 * 1000; // 30 days in milliseconds
+
+const UPDATE_INTERVAL = 400; // Update every 100ms
+const PITCH_SMOOTHING_FACTOR = 0.8; // Adjust this value for more or less smoothing
 
 function Play() {
   const { videoId } = useParams();
@@ -29,6 +35,8 @@ function Play() {
   const [mp3NoteRanges, setMp3NoteRanges] = useState([]);
   const [micNoteRanges, setMicNoteRanges] = useState([]);
   const [score, setScore] = useState(0);
+  const [subtitles, setSubtitles] = useState([]);
+  const [currentSubtitle, setCurrentSubtitle] = useState("");
 
   const audioRef = useRef(null);
   const micAudioContextRef = useRef(null);
@@ -45,48 +53,76 @@ function Play() {
   const updateInterval = 1000; // milliseconds
   const maxFrequency = 1000; // Set max frequency limit for visualization
 
+  const getNextAvailableKey = () => {
+    const now = Date.now();
+    let keyData = JSON.parse(localStorage.getItem("apiKeyData")) || {};
+
+    for (let key of API_KEYS) {
+      if (!keyData[key]) {
+        keyData[key] = { count: 0, lastReset: now };
+      }
+
+      if (now - keyData[key].lastReset > RESET_INTERVAL) {
+        keyData[key] = { count: 0, lastReset: now };
+      }
+
+      if (keyData[key].count < MAX_REQUESTS_PER_MONTH) {
+        keyData[key].count++;
+        localStorage.setItem("apiKeyData", JSON.stringify(keyData));
+        return key;
+      }
+    }
+
+    throw new Error("All API keys have reached their monthly limit");
+  };
+
   useEffect(() => {
-    const fetchCaptions = async () => {
+    const fetchSubtitles = async () => {
       try {
-        const response = await fetch(
-          `https://subtitles-for-youtube.p.rapidapi.com/subtitles/${videoId}?type=None&translated=Original`,
-          {
-            method: "GET",
-            headers: {
-              "x-rapidapi-key": API_KEYS[currentKeyIndex],
-              "x-rapidapi-host": "subtitles-for-youtube.p.rapidapi.com",
-            },
-          }
-        );
+        const apiKey = getNextAvailableKey();
+        const url = `https://youtube-captions.p.rapidapi.com/transcript2?videoId=${videoId}`;
+        const options = {
+          method: "GET",
+          headers: {
+            "x-rapidapi-key": apiKey,
+            "x-rapidapi-host": "youtube-captions.p.rapidapi.com",
+          },
+        };
 
-        if (response.status === 429) {
-          setCurrentKeyIndex((prevIndex) => (prevIndex + 1) % API_KEYS.length);
-          return;
-        }
+        const response = await fetch(url, options);
+        const result = await response.text();
 
-        const data = await response.json();
-        console.log(data);
-
-        const parsedLyrics = data.map((item) => ({
-          start: item.start,
-          end: item.end,
-          text: item.text,
-        }));
-
-        setLyrics(parsedLyrics);
-        setRequestCount((prevCount) => prevCount + 1);
-
-        if (requestCount >= MAX_REQUESTS_PER_DAY) {
-          setCurrentKeyIndex((prevIndex) => (prevIndex + 1) % API_KEYS.length);
-          setRequestCount(0);
-        }
+        // Parse the result into an array of subtitle objects
+        const parsedSubtitles = JSON.parse(result);
+        setSubtitles(parsedSubtitles);
       } catch (error) {
-        console.error("Error fetching captions:", error);
+        console.error("Error fetching subtitles:", error);
       }
     };
 
-    fetchCaptions();
-  }, [videoId, currentKeyIndex, requestCount]);
+    if (videoId) {
+      fetchSubtitles();
+    }
+  }, [videoId]);
+
+  useEffect(() => {
+    const updateSubtitle = () => {
+      const currentTimeMs = currentTime * 1000; // Convert to milliseconds
+      const currentSubtitle = subtitles.find(
+        (subtitle) =>
+          currentTimeMs >= subtitle.offset &&
+          currentTimeMs < subtitle.offset + subtitle.duration
+      );
+
+      if (currentSubtitle) {
+        setCurrentSubtitle(currentSubtitle.text);
+      } else {
+        setCurrentSubtitle("");
+      }
+    };
+
+    updateSubtitle();
+  }, [currentTime, subtitles]);
 
   const startPitchDetection = () => {
     startMicPitchDetection();
@@ -114,42 +150,35 @@ function Play() {
   const detectMicPitch = () => {
     const micAnalyser = micAnalyserRef.current;
     const micDataArray = micDataArrayRef.current;
-    let lastUpdateTime = Date.now();
 
     const updateMicPitch = () => {
-      const currentTime = Date.now();
-      if (currentTime - lastUpdateTime >= updateInterval) {
-        micAnalyser.getFloatTimeDomainData(micDataArray);
-        const pitchValue = detectPitchFFT(
-          micDataArray,
-          micAudioContextRef.current.sampleRate
-        );
+      micAnalyser.getFloatTimeDomainData(micDataArray);
+      const pitchValue = detectPitchFFT(
+        micDataArray,
+        micAudioContextRef.current.sampleRate
+      );
 
-        if (pitchValue !== -1 && pitchValue < maxFrequency) {
-          const smoothedPitch =
-            pitchValue * smoothingFactor +
-            (micPitch || pitchValue) * (1 - smoothingFactor);
-          setMicPitch(smoothedPitch);
-          const note = frequencyToNote(smoothedPitch);
-          setCurrentMicNote(note);
+      if (pitchValue !== -1 && pitchValue < maxFrequency) {
+        const smoothedPitch =
+          pitchValue * (1 - PITCH_SMOOTHING_FACTOR) +
+          (micPitch || pitchValue) * PITCH_SMOOTHING_FACTOR;
+        setMicPitch(smoothedPitch);
+        const note = frequencyToNote(smoothedPitch);
+        setCurrentMicNote(note);
 
-          const elapsedTime = audioRef.current
-            ? audioRef.current.currentTime
-            : 0;
-          setMicNoteRanges((prevData) => [
-            ...prevData,
-            {
-              note,
-              frequency: smoothedPitch.toFixed(2),
-              time: elapsedTime.toFixed(2),
-            },
-          ]);
-          lastUpdateTime = currentTime;
-        }
+        const elapsedTime = audioRef.current ? audioRef.current.currentTime : 0;
+        setMicNoteRanges((prevData) => [
+          ...prevData,
+          {
+            note,
+            frequency: smoothedPitch.toFixed(2),
+            time: elapsedTime.toFixed(2),
+          },
+        ]);
       }
 
       if (isAnalyzing) {
-        requestAnimationFrame(updateMicPitch);
+        setTimeout(updateMicPitch, UPDATE_INTERVAL);
       }
     };
 
@@ -157,6 +186,11 @@ function Play() {
   };
 
   const startMp3PitchDetection = () => {
+    if (!audioRef.current) {
+      console.error("Audio element not found");
+      return;
+    }
+
     mp3AudioContextRef.current = new (window.AudioContext ||
       window.webkitAudioContext)();
     mp3AnalyserRef.current = mp3AudioContextRef.current.createAnalyser();
@@ -167,49 +201,48 @@ function Play() {
     mp3AnalyserRef.current.connect(mp3AudioContextRef.current.destination);
     mp3AnalyserRef.current.fftSize = 2048;
     mp3DataArrayRef.current = new Float32Array(mp3AnalyserRef.current.fftSize);
+
+    setIsAnalyzing(true);
     detectMp3Pitch();
   };
 
   const detectMp3Pitch = () => {
+    if (!isAnalyzing) return;
+
     const mp3Analyser = mp3AnalyserRef.current;
     const mp3DataArray = mp3DataArrayRef.current;
-    let lastUpdateTime = Date.now();
 
-    const updateMp3Pitch = () => {
-      const currentTime = Date.now();
-      if (currentTime - lastUpdateTime >= updateInterval) {
-        mp3Analyser.getFloatTimeDomainData(mp3DataArray);
-        const pitchValue = detectPitchFFT(
-          mp3DataArray,
-          mp3AudioContextRef.current.sampleRate
-        );
+    const updatePitch = () => {
+      mp3Analyser.getFloatTimeDomainData(mp3DataArray);
+      const pitchValue = detectPitchFFT(
+        mp3DataArray,
+        mp3AudioContextRef.current.sampleRate
+      );
 
-        if (pitchValue !== -1 && pitchValue < maxFrequency) {
-          const smoothedPitch =
-            pitchValue * smoothingFactor +
-            (mp3Pitch || pitchValue) * (1 - smoothingFactor);
-          setMp3Pitch(smoothedPitch);
-          const note = frequencyToNote(smoothedPitch);
-          setCurrentMp3Note(note);
+      if (pitchValue !== -1 && pitchValue < maxFrequency) {
+        const smoothedPitch =
+          pitchValue * (1 - PITCH_SMOOTHING_FACTOR) +
+          (mp3Pitch || pitchValue) * PITCH_SMOOTHING_FACTOR;
+        setMp3Pitch(smoothedPitch);
+        const note = frequencyToNote(smoothedPitch);
+        setCurrentMp3Note(note);
 
-          setMp3NoteRanges((prevData) => [
-            ...prevData,
-            {
-              note,
-              frequency: smoothedPitch.toFixed(2),
-              time: audioRef.current.currentTime.toFixed(2),
-            },
-          ]);
-          lastUpdateTime = currentTime;
-        }
+        setMp3NoteRanges((prevData) => [
+          ...prevData,
+          {
+            note,
+            frequency: smoothedPitch.toFixed(2),
+            time: audioRef.current.currentTime.toFixed(2),
+          },
+        ]);
       }
 
       if (isAnalyzing) {
-        requestAnimationFrame(updateMp3Pitch);
+        setTimeout(updatePitch, UPDATE_INTERVAL);
       }
     };
 
-    updateMp3Pitch();
+    updatePitch();
   };
 
   const compareNotes = () => {
@@ -283,6 +316,11 @@ function Play() {
         "*"
       );
     }
+
+    // Start or resume MP3 playback
+    if (audioRef.current) {
+      audioRef.current.play();
+    }
   };
 
   const handleStop = () => {
@@ -311,28 +349,6 @@ function Play() {
       );
     }
   };
-
-  useEffect(() => {
-    const updateSubtitles = () => {
-      const currentIndex = lyrics.findIndex(
-        (line) => currentTime >= line.start && currentTime <= line.end
-      );
-      const nextIndex = currentIndex + 1;
-
-      const newSubtitles = [];
-      if (currentIndex !== -1) {
-        newSubtitles.push(lyrics[currentIndex]);
-        setCurrentCaption(lyrics[currentIndex].text);
-      }
-      if (nextIndex < lyrics.length) {
-        newSubtitles.push(lyrics[nextIndex]);
-      }
-
-      setCurrentSubtitles(newSubtitles);
-    };
-
-    updateSubtitles();
-  }, [currentTime, lyrics]);
 
   useEffect(() => {
     return () => {
@@ -411,16 +427,25 @@ function Play() {
             onClick={handleClickVideo}
           ></iframe>
           <div className="subtitle-overlay">
-            {currentSubtitles.map((line, index) => (
-              <p
-                key={index}
-                className={`subtitle-text ${
-                  line.text === currentCaption ? "current-caption" : ""
-                }`}
-              >
-                {line.text}
-              </p>
-            ))}
+            <p
+              className="subtitle-text current-caption"
+              style={{
+                color: "white",
+                fontSize: "24px",
+                textAlign: "center",
+                width: "100%",
+                position: "absolute",
+                bottom: "50px",
+                left: "0",
+                right: "0",
+                margin: "auto",
+                padding: "10px",
+                backgroundColor: "rgba(0, 0, 0, 0.5)",
+                borderRadius: "5px",
+              }}
+            >
+              {currentSubtitle}
+            </p>
           </div>
           <PitchVisualizer
             micNoteRanges={micNoteRanges}

@@ -1,67 +1,66 @@
-/* Play.css */
-
 .video-container {
-    position: relative;
-    width: 100%;
-    height: 100vh; /* Full viewport height */
-    overflow: hidden;
-  }
-  
-  #youtube-iframe {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    z-index: -1; /* Place it behind other content */
-    opacity: 0.5; /* Adjust opacity as needed */
-  }
-  
-  .subtitle-overlay {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    pointer-events: none; /* Allows interaction with underlying elements */
-    z-index: 1; /* Place it above the background video */
-  }
-  
-  .subtitle-text {
-    color: white;
-    font-size: 24px;
-    text-align: center;
-    margin: 0;
-  }
-  
-  .current-caption {
-    font-weight: bold;
-    text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.8); /* Improve readability */
-  }
-  
-  .time-display {
-    position: absolute;
-    bottom: 10px;
-    left: 10px;
-    color: white;
-    font-size: 18px;
-    z-index: 1; /* Place it above the background video */
-  }
-  
-  .play-button, .stop-button {
-    position: absolute;
-    bottom: 10px;
-    right: 10px;
-    background-color: rgba(0, 0, 0, 0.5);
-    color: white;
-    border: none;
-    padding: 10px 20px;
-    cursor: pointer;
-    z-index: 1; /* Place it above the background video */
-  }
-  
+  position: relative;
+  width: 100%;
+  height: 100vh; /* Full viewport height */
+  overflow: hidden;
+}
+
+#youtube-iframe {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  z-index: -1; /* Place it behind other content */
+  opacity: 0.5; /* Adjust opacity as needed */
+}
+
+.subtitle-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none; /* Allows interaction with underlying elements */
+  z-index: 1; /* Place it above the background video */
+}
+
+.subtitle-text {
+  color: white;
+  font-size: 24px;
+  text-align: center;
+  margin: 0;
+  font-weight: bold;
+  text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.8); /* Improve readability */
+}
+
+.time-display {
+  position: absolute;
+  bottom: 10px;
+  left: 10px;
+  color: white;
+  font-size: 18px;
+  z-index: 1; /* Place it above the background video */
+}
+
+.play-button, .stop-button {
+  position: absolute;
+  bottom: 10px;
+  right: 10px;
+  background-color: rgba(0, 0, 0, 0.5);
+  color: white;
+  border: none;
+  padding: 10px 20px;
+  cursor: pointer;
+  z-index: 1; /* Place it above the background video */
+}
+
+/* New styles for titles and paragraphs */
+h1, h2, p {
+  color: white; /* Set text color to white */ 
+}

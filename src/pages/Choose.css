@@ -1,0 +1,33 @@
+body {
+    background: black; /* Solid black background */
+    display: flex; /* Centering content */
+    justify-content: center; /* Center horizontally */
+    align-items: center; /* Center vertically */
+    height: 100vh; /* Full viewport height */
+}
+
+h1 {
+    color: white; /* Title in white */
+}
+
+input {
+    border-radius: 15px; /* Rounded corners for input boxes */
+    padding: 10px; /* Padding for input boxes */
+    margin: 03px 0; /* Margin for spacing */
+    border: 1px solid #ff8c00; /* Orange border for input boxes */
+}
+
+button {
+    background-color: #ff8c00; /* Stronger orange for button */
+    color: white;
+    border: none;
+    margin-top:10px;
+    padding: 10px 50px; /* Increased padding for a wider button */
+    border-radius: 15px; /* Increased border-radius for rounded corners */
+    cursor: pointer;
+    font-size: 16px;
+}
+
+button:hover {
+    opacity: 0.8; /* Optional: Add hover effect */
+}

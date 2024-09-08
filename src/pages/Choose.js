@@ -1,10 +1,42 @@
-import React, { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import React, { useEffect, useState } from "react";
+import { useNavigate, useParams } from "react-router-dom";
+import "./Choose.css";
 
 function Choose() {
+  const { videoId } = useParams(); // Get videoId from URL
   const [artist, setArtist] = useState("");
   const [music, setMusic] = useState("");
   const navigate = useNavigate();
+
+  useEffect(() => {
+    // Fetch video details using the videoId
+    const fetchVideoDetails = async () => {
+      try {
+        const response = await fetch(
+          `https://youtube-v31.p.rapidapi.com/videos?id=${videoId}&part=snippet`,
+          {
+            method: "GET",
+            headers: {
+              "x-rapidapi-key":
+                "4a2885a20cmshc882f79ada16c13p17bbc2jsncb4912134c39",
+              "x-rapidapi-host": "youtube-v31.p.rapidapi.com",
+            },
+          }
+        );
+
+        const data = await response.json();
+        if (data.items && data.items.length > 0) {
+          const videoDetails = data.items[0].snippet;
+          setArtist(videoDetails.channelTitle); // Set artist to channel title
+          setMusic(videoDetails.title); // Set music to video title
+        }
+      } catch (error) {
+        console.error("Error fetching video details:", error);
+      }
+    };
+
+    fetchVideoDetails();
+  }, [videoId]);
 
   const handleSearch = async (e) => {
     e.preventDefault();
@@ -46,7 +78,8 @@ function Choose() {
 
   return (
     <div style={{ textAlign: "center", padding: "50px" }}>
-      <h2>Choose a Song</h2>
+      <h1>Choose a Song</h1>
+      <h3>Pick the song you want to sing</h3>
       <form onSubmit={handleSearch}>
         <div>
           <input

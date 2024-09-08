@@ -9,6 +9,7 @@ import PitchDetectionPage from "./pages/PitchDetectionPage";
 import MP3PitchDetectionPage from "./pages/MP3PitchDetectionPage";
 import MP3PitchExtractionPage from "./pages/MP3PitchExtractionPage";
 import PlayMode from "./pages/PlayMode";
+import Captions from "./pages/Captions";
 
 function App() {
   return (
@@ -16,6 +17,7 @@ function App() {
       <div>
         <Routes>
           <Route path="/" element={<Home />} />
+          <Route path="/captions" element={<Captions />} />
           <Route path="/choose" element={<Choose />} />
           <Route path="/play/:videoId" element={<Play />} />
           <Route path="/playvoice/:videoId" element={<PlayVoice />} />

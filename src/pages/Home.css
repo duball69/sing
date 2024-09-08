@@ -1,0 +1,30 @@
+body {
+    background: black; /* Changed to solid black background */
+    display: flex; /* Centering content */
+    justify-content: center; /* Center horizontally */
+    align-items: center; /* Center vertically */
+    height: 100vh; /* Full viewport height */
+}
+
+h1 {
+    color: white;
+}
+
+h3 {
+    color: white;
+    margin-top:-14px;
+}
+
+button {
+    background-color: #ff8c00; /* Stronger orange for button */
+    color: white;
+    border: none;
+    padding: 10px 50px; /* Increased padding for a wider button */
+    border-radius: 15px; /* Increased border-radius for rounded corners */
+    cursor: pointer;
+    font-size: 16px;
+}
+
+button:hover {
+    opacity: 0.8; /* Optional: Add hover effect */
+}

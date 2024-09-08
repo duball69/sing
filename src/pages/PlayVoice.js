@@ -1,94 +1,98 @@
 import React, { useEffect, useState, useRef } from "react";
 import { useParams } from "react-router-dom";
-import "./Play.css";
 
-function Play() {
+const API_KEYS = [
+  "4a2885a20cmshc882f79ada16c13p17bbc2jsncb4912134c39",
+  "e0a4a7e079msh2d3bd6eecf1c74fp12ba85jsnaab86c305b67",
+  "55e68a52fbmsh91bd7fe14f7572fp1ea3d3jsn906b3acc22ed",
+];
+
+const MAX_REQUESTS_PER_MONTH = 35;
+const RESET_INTERVAL = 30 * 24 * 60 * 60 * 1000; // 30 days in milliseconds
+
+const PlayVoice = () => {
   const { videoId } = useParams();
+  const [subtitles, setSubtitles] = useState([]);
+  const [currentSubtitle, setCurrentSubtitle] = useState("");
   const [currentTime, setCurrentTime] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [videoSrc, setVideoSrc] = useState(null);
-  const [pitch, setPitch] = useState(null); // State to store detected pitch
-  const timerRef = useRef(null);
   const iframeRef = useRef(null);
-  const audioContextRef = useRef(null);
-  const mediaElementSourceRef = useRef(null);
-  const analyserRef = useRef(null);
-  const pitchDetectionRef = useRef(null);
+  const timerRef = useRef(null);
 
-  // Function to detect pitch using auto-correlation
-  const autoCorrelate = (buffer, sampleRate) => {
-    const SIZE = buffer.length;
-    const MAX_SAMPLES = Math.floor(SIZE / 2);
-    let bestOffset = -1;
-    let bestCorrelation = 0;
-    let rms = 0;
-    let foundGoodCorrelation = false;
-    let correlations = new Array(MAX_SAMPLES);
+  const getNextAvailableKey = () => {
+    const now = Date.now();
+    let keyData = JSON.parse(localStorage.getItem("apiKeyData")) || {};
 
-    for (let i = 0; i < SIZE; i++) {
-      const val = buffer[i];
-      rms += val * val;
-    }
-    rms = Math.sqrt(rms / SIZE);
-
-    if (rms < 0.01) return -1; // Too much noise, no pitch detected.
-
-    let lastCorrelation = 1;
-    for (let offset = 0; offset < MAX_SAMPLES; offset++) {
-      let correlation = 0;
-
-      for (let i = 0; i < MAX_SAMPLES; i++) {
-        correlation += Math.abs(buffer[i] - buffer[i + offset]);
+    for (let key of API_KEYS) {
+      if (!keyData[key]) {
+        keyData[key] = { count: 0, lastReset: now };
       }
-      correlation = 1 - correlation / MAX_SAMPLES;
-      correlations[offset] = correlation;
 
-      if (correlation > 0.9 && correlation > lastCorrelation) {
-        foundGoodCorrelation = true;
-        if (correlation > bestCorrelation) {
-          bestCorrelation = correlation;
-          bestOffset = offset;
-        }
-      } else if (foundGoodCorrelation) {
-        const shift =
-          (correlations[bestOffset + 1] - correlations[bestOffset - 1]) /
-          correlations[bestOffset];
-        return sampleRate / (bestOffset + 8 * shift);
+      if (now - keyData[key].lastReset > RESET_INTERVAL) {
+        keyData[key] = { count: 0, lastReset: now };
       }
-      lastCorrelation = correlation;
+
+      if (keyData[key].count < MAX_REQUESTS_PER_MONTH) {
+        keyData[key].count++;
+        localStorage.setItem("apiKeyData", JSON.stringify(keyData));
+        return key;
+      }
     }
-    if (bestCorrelation > 0.01) {
-      return sampleRate / bestOffset;
-    }
-    return -1;
+
+    throw new Error("All API keys have reached their monthly limit");
   };
 
-  // Function to detect pitch
-  const detectPitch = () => {
-    if (!analyserRef.current) return;
+  useEffect(() => {
+    const fetchSubtitles = async () => {
+      try {
+        const apiKey = getNextAvailableKey();
+        const url = `https://youtube-captions.p.rapidapi.com/transcript2?videoId=${videoId}`;
+        const options = {
+          method: "GET",
+          headers: {
+            "x-rapidapi-key": apiKey,
+            "x-rapidapi-host": "youtube-captions.p.rapidapi.com",
+          },
+        };
 
-    const bufferLength = analyserRef.current.fftSize;
-    const dataArray = new Float32Array(bufferLength);
-    analyserRef.current.getFloatTimeDomainData(dataArray);
+        const response = await fetch(url, options);
+        const result = await response.text();
+        const parsedSubtitles = JSON.parse(result);
+        setSubtitles(parsedSubtitles);
+      } catch (error) {
+        console.error("Error fetching subtitles:", error);
+      }
+    };
 
-    const pitchValue = autoCorrelate(
-      dataArray,
-      audioContextRef.current.sampleRate
-    );
-    if (pitchValue !== -1) {
-      setPitch(pitchValue.toFixed(2)); // Update pitch state
-    } else {
-      setPitch("No pitch detected");
+    if (videoId) {
+      fetchSubtitles();
     }
-  };
+  }, [videoId]);
 
-  // Start video and timer
+  useEffect(() => {
+    const updateSubtitle = () => {
+      const currentTimeMs = currentTime * 1000; // Convert to milliseconds
+      const currentSubtitle = subtitles.find(
+        (subtitle) =>
+          currentTimeMs >= subtitle.offset &&
+          currentTimeMs < subtitle.offset + subtitle.duration
+      );
+
+      if (currentSubtitle) {
+        setCurrentSubtitle(currentSubtitle.text);
+      } else {
+        setCurrentSubtitle("");
+      }
+    };
+
+    updateSubtitle();
+  }, [currentTime, subtitles]);
+
   const handlePlay = () => {
     setIsPlaying(true);
-    setCurrentTime(0);
-
     setVideoSrc(
-      `https://www.youtube.com/embed/${videoId}?autoplay=1&controls=1`
+      `https://www.youtube.com/embed/${videoId}?autoplay=1&controls=1&mute=1`
     );
 
     if (timerRef.current) {
@@ -99,13 +103,6 @@ function Play() {
     }, 1000);
 
     if (iframeRef.current) {
-      const iframeDoc =
-        iframeRef.current.contentDocument ||
-        iframeRef.current.contentWindow.document;
-      const videoElement = iframeDoc.querySelector("video");
-      if (videoElement) {
-        setupAudioContext(videoElement);
-      }
       iframeRef.current.contentWindow.postMessage(
         JSON.stringify({ event: "command", func: "playVideo" }),
         "*"
@@ -113,7 +110,6 @@ function Play() {
     }
   };
 
-  // Stop timer and video
   const handleStop = () => {
     if (timerRef.current) {
       clearInterval(timerRef.current);
@@ -127,58 +123,6 @@ function Play() {
         "*"
       );
     }
-  };
-
-  // Setup Web Audio API
-  const setupAudioContext = (videoElement) => {
-    audioContextRef.current = new (window.AudioContext ||
-      window.webkitAudioContext)();
-    mediaElementSourceRef.current =
-      audioContextRef.current.createMediaElementSource(videoElement);
-    analyserRef.current = audioContextRef.current.createAnalyser();
-    analyserRef.current.fftSize = 2048;
-    mediaElementSourceRef.current.connect(analyserRef.current);
-    analyserRef.current.connect(audioContextRef.current.destination);
-
-    pitchDetectionRef.current = setInterval(detectPitch, 100); // Check pitch every 100ms
-  };
-
-  // Cleanup on component unmount
-  useEffect(() => {
-    return () => {
-      if (timerRef.current) {
-        clearInterval(timerRef.current);
-      }
-      if (pitchDetectionRef.current) {
-        clearInterval(pitchDetectionRef.current);
-      }
-      if (audioContextRef.current) {
-        audioContextRef.current.close();
-      }
-    };
-  }, []);
-
-  // Handle click to play/pause video
-  const handleClickVideo = () => {
-    if (iframeRef.current) {
-      iframeRef.current.contentWindow.postMessage(
-        JSON.stringify({
-          event: "command",
-          func: isPlaying ? "pauseVideo" : "playVideo",
-        }),
-        "*"
-      );
-    }
-  };
-
-  // Format time as MM:SS
-  const formatTime = (seconds) => {
-    const minutes = Math.floor(seconds / 60);
-    const secs = Math.floor(seconds % 60);
-    return `${String(minutes).padStart(2, "0")}:${String(secs).padStart(
-      2,
-      "0"
-    )}`;
   };
 
   return (
@@ -200,20 +144,20 @@ function Play() {
             allow="autoplay; encrypted-media"
             allowFullScreen
             title="YouTube Video Player"
-            style={{ cursor: "pointer" }}
-            onClick={handleClickVideo}
           ></iframe>
-          <div className="time-display">{formatTime(currentTime)}</div>
-          <div className="pitch-display">
-            Pitch: {pitch ? `${pitch} Hz` : "Detecting..."}
+          <div className="subtitle-overlay">
+            <p className="subtitle-text">{currentSubtitle}</p>
+          </div>
+          <div className="time-display">
+            {new Date(currentTime * 1000).toISOString().substr(14, 5)}
           </div>
           <button onClick={handleStop} className="stop-button">
-            Stop Timer
+            Stop Video
           </button>
         </>
       )}
     </div>
   );
-}
+};
 
-export default Play;
+export default PlayVoice;

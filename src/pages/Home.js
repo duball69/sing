@@ -1,6 +1,7 @@
 // Home.js
 import React from "react";
 import { useNavigate } from "react-router-dom";
+import "./Home.css";
 
 function Home() {
   const navigate = useNavigate();
@@ -11,8 +12,8 @@ function Home() {
 
   return (
     <div style={{ textAlign: "center", padding: "50px" }}>
-      <h1>Karaoke Game</h1>
-      <p>Your ultimate singing experience!</p>
+      <h1>SingFi Game</h1>
+      <h3>A sing-to-earn karaoke experience!</h3>
       <button onClick={handlePlayClick}>Play</button>
     </div>
   );

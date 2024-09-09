@@ -6,9 +6,10 @@ import { detectPitchFFT, frequencyToNote } from "../components/utils";
 import DownloadMp3 from "../components/DownloadMp3";
 
 const API_KEYS = [
-  //"4a2885a20cmshc882f79ada16c13p17bbc2jsncb4912134c39",
-  //"e0a4a7e079msh2d3bd6eecf1c74fp12ba85jsnaab86c305b67",
-  //"55e68a52fbmsh91bd7fe14f7572fp1ea3d3jsn906b3acc22ed",
+  "0687e8e48bmsh519089e70666b40p124f0ajsnfc47fa8df8de",
+  "4a2885a20cmshc882f79ada16c13p17bbc2jsncb4912134c39",
+  "e0a4a7e079msh2d3bd6eecf1c74fp12ba85jsnaab86c305b67",
+  "55e68a52fbmsh91bd7fe14f7572fp1ea3d3jsn906b3acc22ed",
 ];
 
 const MAX_REQUESTS_PER_MONTH = 35;

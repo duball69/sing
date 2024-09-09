@@ -1,163 +1,83 @@
 import React, { useEffect, useState, useRef } from "react";
 import { useParams } from "react-router-dom";
+import axios from "axios";
+import "./PlayVoice.css";
+import PitchVisualizer from "../components/PitchVisualizer";
+import { detectPitchFFT, frequencyToNote } from "../components/utils";
 
-const API_KEYS = [
-  "4a2885a20cmshc882f79ada16c13p17bbc2jsncb4912134c39",
-  "e0a4a7e079msh2d3bd6eecf1c74fp12ba85jsnaab86c305b67",
-  "55e68a52fbmsh91bd7fe14f7572fp1ea3d3jsn906b3acc22ed",
-];
-
-const MAX_REQUESTS_PER_MONTH = 35;
-const RESET_INTERVAL = 30 * 24 * 60 * 60 * 1000; // 30 days in milliseconds
-
-const PlayVoice = () => {
+function PlayVoice() {
   const { videoId } = useParams();
-  const [subtitles, setSubtitles] = useState([]);
-  const [currentSubtitle, setCurrentSubtitle] = useState("");
-  const [currentTime, setCurrentTime] = useState(0);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [videoSrc, setVideoSrc] = useState(null);
-  const iframeRef = useRef(null);
-  const timerRef = useRef(null);
-
-  const getNextAvailableKey = () => {
-    const now = Date.now();
-    let keyData = JSON.parse(localStorage.getItem("apiKeyData")) || {};
-
-    for (let key of API_KEYS) {
-      if (!keyData[key]) {
-        keyData[key] = { count: 0, lastReset: now };
-      }
-
-      if (now - keyData[key].lastReset > RESET_INTERVAL) {
-        keyData[key] = { count: 0, lastReset: now };
-      }
-
-      if (keyData[key].count < MAX_REQUESTS_PER_MONTH) {
-        keyData[key].count++;
-        localStorage.setItem("apiKeyData", JSON.stringify(keyData));
-        return key;
-      }
-    }
-
-    throw new Error("All API keys have reached their monthly limit");
-  };
+  const [audioSrc, setAudioSrc] = useState(null);
+  const audioRef = useRef(null);
 
   useEffect(() => {
-    const fetchSubtitles = async () => {
+    const fetchAudioSrc = async () => {
       try {
-        const apiKey = getNextAvailableKey();
-        const url = `https://youtube-captions.p.rapidapi.com/transcript2?videoId=${videoId}`;
-        const options = {
-          method: "GET",
-          headers: {
-            "x-rapidapi-key": apiKey,
-            "x-rapidapi-host": "youtube-captions.p.rapidapi.com",
-          },
-        };
-
-        const response = await fetch(url, options);
-        const result = await response.text();
-        const parsedSubtitles = JSON.parse(result);
-        setSubtitles(parsedSubtitles);
+        const response = await axios.get(
+          `http://localhost:5000/download-mp3?videoId=${videoId}`
+        );
+        if (response.data && response.data.dlink) {
+          setAudioSrc(response.data.dlink);
+        } else if (response.data && response.data.link) {
+          setAudioSrc(response.data.link);
+        } else {
+          console.error("Unexpected response structure:", response.data);
+        }
       } catch (error) {
-        console.error("Error fetching subtitles:", error);
+        console.error("Error fetching audio source:", error);
       }
     };
 
     if (videoId) {
-      fetchSubtitles();
+      fetchAudioSrc();
     }
   }, [videoId]);
 
   useEffect(() => {
-    const updateSubtitle = () => {
-      const currentTimeMs = currentTime * 1000; // Convert to milliseconds
-      const currentSubtitle = subtitles.find(
-        (subtitle) =>
-          currentTimeMs >= subtitle.offset &&
-          currentTimeMs < subtitle.offset + subtitle.duration
-      );
-
-      if (currentSubtitle) {
-        setCurrentSubtitle(currentSubtitle.text);
-      } else {
-        setCurrentSubtitle("");
-      }
-    };
-
-    updateSubtitle();
-  }, [currentTime, subtitles]);
+    if (audioSrc && audioRef.current) {
+      audioRef.current.src = audioSrc;
+      audioRef.current.load();
+    }
+  }, [audioSrc]);
 
   const handlePlay = () => {
-    setIsPlaying(true);
-    setVideoSrc(
-      `https://www.youtube.com/embed/${videoId}?autoplay=1&controls=1&mute=1`
-    );
-
-    if (timerRef.current) {
-      clearInterval(timerRef.current);
-    }
-    timerRef.current = setInterval(() => {
-      setCurrentTime((prevTime) => prevTime + 1);
-    }, 1000);
-
-    if (iframeRef.current) {
-      iframeRef.current.contentWindow.postMessage(
-        JSON.stringify({ event: "command", func: "playVideo" }),
-        "*"
-      );
-    }
+    audioRef.current.play();
   };
 
   const handleStop = () => {
-    if (timerRef.current) {
-      clearInterval(timerRef.current);
-      timerRef.current = null;
-    }
-    setIsPlaying(false);
-
-    if (iframeRef.current) {
-      iframeRef.current.contentWindow.postMessage(
-        JSON.stringify({ event: "command", func: "pauseVideo" }),
-        "*"
-      );
-    }
+    audioRef.current.pause();
   };
 
   return (
-    <div className="video-container">
-      {!isPlaying && (
-        <button onClick={handlePlay} className="play-button">
-          Play Video
+    <div className="play-voice-container">
+      <h1>Sing Along</h1>
+      <div className="video-container">
+        <iframe
+          width="560"
+          height="315"
+          src={`https://www.youtube.com/embed/${videoId}`}
+          frameBorder="0"
+          allow="autoplay; encrypted-media"
+          allowFullScreen
+          title="YouTube video player"
+        ></iframe>
+      </div>
+      <audio
+        ref={audioRef}
+        controls
+        style={{ width: "100%", marginTop: "20px" }}
+      />
+      <div className="controls">
+        <button onClick={handlePlay} disabled={!audioSrc}>
+          Play
         </button>
-      )}
-      {isPlaying && videoSrc && (
-        <>
-          <iframe
-            id="youtube-iframe"
-            ref={iframeRef}
-            width="100%"
-            height="500"
-            src={videoSrc}
-            frameBorder="0"
-            allow="autoplay; encrypted-media"
-            allowFullScreen
-            title="YouTube Video Player"
-          ></iframe>
-          <div className="subtitle-overlay">
-            <p className="subtitle-text">{currentSubtitle}</p>
-          </div>
-          <div className="time-display">
-            {new Date(currentTime * 1000).toISOString().substr(14, 5)}
-          </div>
-          <button onClick={handleStop} className="stop-button">
-            Stop Video
-          </button>
-        </>
-      )}
+        <button onClick={handleStop} disabled={!audioRef.current?.paused}>
+          Stop
+        </button>
+      </div>
+      <PitchVisualizer micNoteRanges={[]} mp3NoteRanges={[]} />
     </div>
   );
-};
+}
 
 export default PlayVoice;

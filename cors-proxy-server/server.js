@@ -1,61 +1,65 @@
 const express = require("express");
-const axios = require("axios");
-const cheerio = require("cheerio");
 const cors = require("cors");
+const axios = require("axios");
 
 const app = express();
-const PORT = process.env.PORT || 3001;
+const port = process.env.PORT || 5000;
 
 app.use(cors());
-app.use(express.json());
 
-async function fetchSubtitles(videoUrl) {
-  try {
-    // Step 1: Submit the video URL to DownSub
-    const response = await axios.post(
-      "https://downsub.com/",
-      new URLSearchParams({
-        url: videoUrl,
-      }),
-      {
-        headers: {
-          "Content-Type": "application/x-www-form-urlencoded",
-        },
-      }
-    );
+const API_KEY = "0687e8e48bmsh519089e70666b40p124f0ajsnfc47fa8df8de";
+// const API_KEY = "aabaa1c91dmsheb69eb3a9fe781cp1b617ajsnd1b47220fa98";
 
-    // Step 2: Parse the response to find the download link
-    const $ = cheerio.load(response.data);
-    const downloadLink = $(".download-btn").attr("href");
-
-    if (!downloadLink) {
-      throw new Error("Download link not found");
-    }
-
-    // Step 3: Download the subtitle file
-    const subtitleResponse = await axios.get(downloadLink);
-    return subtitleResponse.data;
-  } catch (error) {
-    console.error("Error fetching subtitles:", error);
-    throw error;
+app.get("/download-mp3", async (req, res) => {
+  const { videoId } = req.query;
+  if (!videoId) {
+    return res.status(400).json({ error: "Video ID is required" });
   }
-}
 
-app.post("/api/subtitles", async (req, res) => {
+  const options = {
+    method: "GET",
+    url: "https://youtube-mp3-downloader2.p.rapidapi.com/ytmp3/ytmp3/custom/",
+    params: {
+      url: `https://www.youtube.com/watch?v=${videoId}`,
+      quality: "320",
+    },
+    headers: {
+      "x-rapidapi-key": API_KEY,
+      "x-rapidapi-host": "youtube-mp3-downloader2.p.rapidapi.com",
+      useQueryString: true, // Add this header if required by the API
+    },
+  };
+
   try {
-    const { videoUrl } = req.body;
-    if (!videoUrl) {
-      return res.status(400).json({ error: "Video URL is required" });
-    }
-    const subtitles = await fetchSubtitles(videoUrl);
-    res.json({ subtitles });
+    console.log(
+      "Sending request to RapidAPI with options:",
+      JSON.stringify(options)
+    );
+    const response = await axios.request(options);
+    console.log(
+      "Received response from RapidAPI:",
+      JSON.stringify(response.data)
+    );
+    res.json(response.data);
   } catch (error) {
-    res
-      .status(500)
-      .json({ error: "Failed to fetch subtitles", message: error.message });
+    console.error("Error details:", error);
+    if (error.response) {
+      console.error("Error response from RapidAPI:", error.response.data);
+      res
+        .status(error.response.status)
+        .json({ error: "Error from RapidAPI", details: error.response.data });
+    } else if (error.request) {
+      console.error("No response received from RapidAPI:", error.request);
+      res.status(500).json({ error: "No response from RapidAPI" });
+    } else {
+      console.error("Error message:", error.message);
+      res
+        .status(500)
+        .json({ error: "Internal server error", message: error.message });
+    }
   }
 });
 
-app.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
+app.listen(port, () => {
+  console.log(`Server is running on port ${port}`);
 });

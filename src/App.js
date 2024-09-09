@@ -4,6 +4,7 @@ import { BrowserRouter as Router, Route, Routes } from "react-router-dom";
 import Home from "./pages/Home";
 import Choose from "./pages/Choose";
 import Play from "./pages/Play";
+import PlayNew from "./pages/PlayNew"; // Import the updated PlayNew component
 import PlayVoice from "./pages/PlayVoice";
 import PitchDetectionPage from "./pages/PitchDetectionPage";
 import MP3PitchDetectionPage from "./pages/MP3PitchDetectionPage";
@@ -20,10 +21,11 @@ function App() {
           <Route path="/captions" element={<Captions />} />
           <Route path="/choose" element={<Choose />} />
           <Route path="/play/:videoId" element={<Play />} />
+          <Route path="/playnew/:videoId" element={<PlayNew />} />{" "}
+          {/* Route for the new PlayNew component */}
           <Route path="/playvoice/:videoId" element={<PlayVoice />} />
           <Route path="/pitchDetectionPage" element={<PitchDetectionPage />} />
           <Route path="/playMode" element={<PlayMode />} />
-
           <Route
             path="/pitch-extraction"
             element={<MP3PitchExtractionPage />}

@@ -1,18 +1,20 @@
 import React, { useEffect, useState, useRef } from "react";
 import { useParams } from "react-router-dom";
+import "./PlayNew.css"; // Import the external CSS file
+import DownloadMp3 from "../components/DownloadMp3";
 
 const API_KEYS = [
-  "0687e8e48bmsh519089e70666b40p124f0ajsnfc47fa8df8de",
+  //"0687e8e48bmsh519089e70666b40p124f0ajsnfc47fa8df8de",
   //"4a2885a20cmshc882f79ada16c13p17bbc2jsncb4912134c39",
   //"e0a4a7e079msh2d3bd6eecf1c74fp12ba85jsnaab86c305b67",
-  //"55e68a52fbmsh91bd7fe14f7572fp1ea3d3jsn906b3acc22ed",
+  "55e68a52fbmsh91bd7fe14f7572fp1ea3d3jsn906b3acc22ed",
 ];
 
 const MAX_REQUESTS_PER_MONTH = 35;
 const RESET_INTERVAL = 30 * 24 * 60 * 60 * 1000; // 30 days in milliseconds
 
 function PlayNew() {
-  const { videoId } = useParams();
+  const { videoId } = useParams(); // Use the actual video ID from URL params
   const [subtitles, setSubtitles] = useState([]);
   const [currentSubtitle, setCurrentSubtitle] = useState("");
   const [currentTime, setCurrentTime] = useState(0);
@@ -91,6 +93,14 @@ function PlayNew() {
     updateSubtitle();
   }, [currentTime, subtitles]);
 
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+      }
+    };
+  }, []);
+
   const handlePlayStop = () => {
     setIsPlaying((prev) => {
       const nextState = !prev;
@@ -126,17 +136,9 @@ function PlayNew() {
     });
   };
 
-  useEffect(() => {
-    return () => {
-      if (timerRef.current) {
-        clearInterval(timerRef.current);
-      }
-    };
-  }, []);
-
   return (
-    <div style={styles.container}>
-      <div style={styles.videoBox}>
+    <div className="container">
+      <div className="video-box">
         {videoId && (
           <iframe
             ref={iframeRef}
@@ -149,66 +151,16 @@ function PlayNew() {
             title="YouTube Video Player"
           ></iframe>
         )}
-        <div style={styles.overlay}>
-          <button onClick={handlePlayStop} style={styles.playStopButton}>
+        <div className="overlay">
+          <DownloadMp3 videoId={videoId} />
+          <button onClick={handlePlayStop} className="play-stop-button">
             {isPlaying ? "Stop" : "Play"}
           </button>
-          <p style={styles.subtitle}>{currentSubtitle}</p>
+          <p className="subtitle">{currentSubtitle}</p>
         </div>
       </div>
     </div>
   );
 }
-
-const styles = {
-  container: {
-    display: "flex",
-    justifyContent: "center",
-    alignItems: "center",
-    height: "100vh",
-    backgroundColor: "black",
-  },
-  videoBox: {
-    position: "relative",
-    margin: "50px",
-    border: "5px solid #ff7700",
-    borderRadius: "20px",
-    overflow: "hidden",
-  },
-  overlay: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    width: "100%",
-    height: "100%",
-    backgroundColor: "rgba(0, 0, 0, 0.5)",
-    display: "flex",
-    flexDirection: "column",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  playStopButton: {
-    position: "absolute",
-    top: "10px",
-    right: "10px",
-
-    zIndex: 10,
-    backgroundColor: "#ff7700",
-    color: "white",
-    border: "none",
-    padding: "10px 40px", // Increased padding to the right and left
-    cursor: "pointer",
-    borderRadius: "5px",
-  },
-  subtitle: {
-    color: "white",
-    fontSize: "24px",
-    textAlign: "center",
-    backgroundColor: "rgba(0, 0, 0, 0.5)",
-    padding: "10px",
-    borderRadius: "5px",
-    maxWidth: "80%",
-  },
-};
 
 export default PlayNew;

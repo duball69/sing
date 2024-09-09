@@ -7,8 +7,10 @@ const port = process.env.PORT || 5000;
 
 app.use(cors());
 
-const API_KEY = "0687e8e48bmsh519089e70666b40p124f0ajsnfc47fa8df8de";
-// const API_KEY = "aabaa1c91dmsheb69eb3a9fe781cp1b617ajsnd1b47220fa98";
+//https://rapidapi.com/ytjar/api/youtube-mp36
+
+// Replace with your RapidAPI key
+const API_KEY = "e0a4a7e079msh2d3bd6eecf1c74fp12ba85jsnaab86c305b67";
 
 app.get("/download-mp3", async (req, res) => {
   const { videoId } = req.query;
@@ -16,30 +18,21 @@ app.get("/download-mp3", async (req, res) => {
     return res.status(400).json({ error: "Video ID is required" });
   }
 
+  // Construct the URL with the videoId parameter
+  const url = `https://youtube-mp36.p.rapidapi.com/dl?id=${videoId}`;
+
   const options = {
     method: "GET",
-    url: "https://youtube-mp3-downloader2.p.rapidapi.com/ytmp3/ytmp3/custom/",
-    params: {
-      url: `https://www.youtube.com/watch?v=${videoId}`,
-      quality: "320",
-    },
     headers: {
       "x-rapidapi-key": API_KEY,
-      "x-rapidapi-host": "youtube-mp3-downloader2.p.rapidapi.com",
-      useQueryString: true, // Add this header if required by the API
+      "x-rapidapi-host": "youtube-mp36.p.rapidapi.com",
     },
   };
 
   try {
-    console.log(
-      "Sending request to RapidAPI with options:",
-      JSON.stringify(options)
-    );
-    const response = await axios.request(options);
-    console.log(
-      "Received response from RapidAPI:",
-      JSON.stringify(response.data)
-    );
+    console.log("Sending request to RapidAPI with URL:", url);
+    const response = await axios.get(url, options);
+    console.log("Received response from RapidAPI:", response.data);
     res.json(response.data);
   } catch (error) {
     console.error("Error details:", error);

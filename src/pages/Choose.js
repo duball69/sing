@@ -38,6 +38,10 @@ function Choose() {
     fetchVideoDetails();
   }, [videoId]);
 
+  const handlePlayNewClick = () => {
+    navigate("/playmode");
+  };
+
   const handleSearch = async (e) => {
     e.preventDefault();
 
@@ -100,6 +104,7 @@ function Choose() {
           />
         </div>
         <button type="submit">Search</button>
+        <button onClick={handlePlayNewClick}>Play</button>
       </form>
     </div>
   );

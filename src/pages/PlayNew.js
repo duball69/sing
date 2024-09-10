@@ -2,25 +2,38 @@ import React, { useEffect, useState, useRef } from "react";
 import { useParams } from "react-router-dom";
 import "./PlayNew.css"; // Import the external CSS file
 import DownloadMp3 from "../components/DownloadMp3";
+import PitchVisualizer from "../components/PitchVisualizer"; // Import the PitchVisualizer component
+import { detectPitchFFT, frequencyToNote } from "../components/utils";
 
 const API_KEYS = [
   //"0687e8e48bmsh519089e70666b40p124f0ajsnfc47fa8df8de",
   //"4a2885a20cmshc882f79ada16c13p17bbc2jsncb4912134c39",
   //"e0a4a7e079msh2d3bd6eecf1c74fp12ba85jsnaab86c305b67",
-  "55e68a52fbmsh91bd7fe14f7572fp1ea3d3jsn906b3acc22ed",
+  //"55e68a52fbmsh91bd7fe14f7572fp1ea3d3jsn906b3acc22ed",
+  //"98062a1219msh782603d97383d24p1803cejsn97d53aec1e62",
 ];
+
+// Subtitles API https://rapidapi.com/belchiorarkad-FqvHs2EDOtP/api/youtube-captions
+// Youtube MP3 API https://rapidapi.com/ytjar/api/youtube-mp36
 
 const MAX_REQUESTS_PER_MONTH = 35;
 const RESET_INTERVAL = 30 * 24 * 60 * 60 * 1000; // 30 days in milliseconds
+const UPDATE_INTERVAL = 400; // Update every 400ms
+const PITCH_SMOOTHING_FACTOR = 0.8;
 
 function PlayNew() {
-  const { videoId } = useParams(); // Use the actual video ID from URL params
+  const { videoId } = useParams();
   const [subtitles, setSubtitles] = useState([]);
   const [currentSubtitle, setCurrentSubtitle] = useState("");
   const [currentTime, setCurrentTime] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [micPitch, setMicPitch] = useState(null);
+  const [mp3Pitch, setMp3Pitch] = useState(null);
+  const [micNoteRanges, setMicNoteRanges] = useState([]);
+  const [mp3NoteRanges, setMp3NoteRanges] = useState([]);
   const iframeRef = useRef(null);
   const timerRef = useRef(null);
+  const audioRef = useRef(null);
 
   const getNextAvailableKey = () => {
     const now = Date.now();
@@ -152,10 +165,20 @@ function PlayNew() {
           ></iframe>
         )}
         <div className="overlay">
-          <DownloadMp3 videoId={videoId} />
+          <DownloadMp3
+            videoId={videoId}
+            isPlaying={isPlaying}
+            togglePlay={() => setIsPlaying((prev) => !prev)}
+          />
           <button onClick={handlePlayStop} className="play-stop-button">
             {isPlaying ? "Stop" : "Play"}
           </button>
+          <div className="pitch-visualizer-container">
+            <PitchVisualizer
+              micNoteRanges={micNoteRanges}
+              mp3NoteRanges={mp3NoteRanges}
+            />
+          </div>
           <p className="subtitle">{currentSubtitle}</p>
         </div>
       </div>

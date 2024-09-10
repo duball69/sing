@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import PitchVisualizer from "../components/PitchVisualizer";
 import { detectPitchFFT, frequencyToNote } from "../components/utils";
+import DownloadMp3 from "../components/DownloadMp3";
 
 const PlayMode = () => {
   const [micPitch, setMicPitch] = useState(null);
@@ -27,18 +28,30 @@ const PlayMode = () => {
   const updateInterval = 1000; // milliseconds
   const maxFrequency = 2000; // Set max frequency limit for visualization
 
-  useEffect(() => {
-    if (isAnalyzing) {
-      startPitchDetection();
-    }
-    return () => {
-      stopPitchDetection();
-    };
-  }, [isAnalyzing]);
-
   const startPitchDetection = () => {
     startMicPitchDetection();
     startMp3PitchDetection();
+  };
+
+  const stopPitchDetection = () => {
+    if (micAudioContextRef.current) {
+      micAudioContextRef.current.close().then(() => {
+        micAudioContextRef.current = null;
+      });
+    }
+    if (mp3AudioContextRef.current) {
+      mp3AudioContextRef.current.close().then(() => {
+        mp3AudioContextRef.current = null;
+      });
+    }
+  };
+
+  const handleMp3Ready = (mp3Url) => {
+    if (audioRef.current) {
+      audioRef.current.src = mp3Url;
+      audioRef.current.load();
+      setIsAnalyzing(true); // Start analyzing when MP3 is ready
+    }
   };
 
   const startMicPitchDetection = async () => {
@@ -106,9 +119,14 @@ const PlayMode = () => {
   };
 
   const startMp3PitchDetection = () => {
+    if (mp3AudioContextRef.current && mp3AnalyserRef.current) {
+      mp3AnalyserRef.current.disconnect();
+    }
+
     mp3AudioContextRef.current = new (window.AudioContext ||
       window.webkitAudioContext)();
     mp3AnalyserRef.current = mp3AudioContextRef.current.createAnalyser();
+
     const source = mp3AudioContextRef.current.createMediaElementSource(
       audioRef.current
     );
@@ -116,6 +134,7 @@ const PlayMode = () => {
     mp3AnalyserRef.current.connect(mp3AudioContextRef.current.destination);
     mp3AnalyserRef.current.fftSize = 2048;
     mp3DataArrayRef.current = new Float32Array(mp3AnalyserRef.current.fftSize);
+
     detectMp3Pitch();
   };
 
@@ -163,7 +182,7 @@ const PlayMode = () => {
 
   const compareNotes = () => {
     const timeWindow = 0.4; // Time window in seconds to consider for matching
-    const accuracyThreshold = 100; // ±5 Hz for a correct match
+    const accuracyThreshold = 100; // ±100 Hz for a correct match
     const perfectMatchScore = 100; // Score for a perfect match
     const nearMatchScore = 50; // Score for a near match
 
@@ -216,108 +235,43 @@ const PlayMode = () => {
     }
   }, [micNoteRanges, mp3NoteRanges]);
 
-  const stopPitchDetection = () => {
-    if (micAudioContextRef.current) {
-      micAudioContextRef.current.close();
-      micAudioContextRef.current = null;
-    }
-    if (mp3AudioContextRef.current) {
-      mp3AudioContextRef.current.close();
-      mp3AudioContextRef.current = null;
-    }
-  };
-
+  // Handle play, pause, and end events
   const handlePlay = () => {
     setIsPlaying(true);
     setMp3StartTime(audioRef.current.currentTime);
+    startPitchDetection();
   };
 
   const handlePause = () => {
     setIsPlaying(false);
+    stopPitchDetection();
   };
 
-  // Use this for the "ended" event if you want to stop scoring when the MP3 stops
   const handleEnded = () => {
     setIsPlaying(false);
-  };
-
-  useEffect(() => {
-    if (audioRef.current) {
-      audioRef.current.addEventListener("play", handlePlay);
-      audioRef.current.addEventListener("pause", handlePause);
-      audioRef.current.addEventListener("ended", handleEnded);
-
-      return () => {
-        audioRef.current.removeEventListener("play", handlePlay);
-        audioRef.current.removeEventListener("pause", handlePause);
-        audioRef.current.removeEventListener("ended", handleEnded);
-      };
-    }
-  }, []);
-
-  useEffect(() => {
-    if (audioRef.current) {
-      audioRef.current.addEventListener("play", handlePlay);
-      return () => {
-        audioRef.current.removeEventListener("play", handlePlay);
-      };
-    }
-  }, []);
-
-  const handleFileChange = (event) => {
-    const file = event.target.files[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const arrayBuffer = e.target.result;
-        const audioContext = new (window.AudioContext ||
-          window.webkitAudioContext)();
-        audioContext.decodeAudioData(arrayBuffer, (audioBuffer) => {
-          audioRef.current.src = URL.createObjectURL(file);
-          audioRef.current.load();
-          setIsAnalyzing(true);
-        });
-      };
-      reader.readAsArrayBuffer(file);
-    }
+    stopPitchDetection();
+    setMp3StartTime(null);
   };
 
   return (
-    <div style={{ textAlign: "center", marginTop: "50px" }}>
-      <h1>MP3 and Microphone Pitch Detection</h1>
-      <input type="file" accept=".mp3" onChange={handleFileChange} />
-      <audio ref={audioRef} controls></audio>
-      
-      {/* Video element for background playback */}
-      <video ref={videoRef} src="path/to/your/video.mp4" style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", zIndex: -1 }} muted autoPlay loop />
+    <div>
+      <h1>Pitch Detection</h1>
+      <DownloadMp3 onMp3Ready={handleMp3Ready} videoId={"PND8GP-bPmw"} />
+      <audio
+        ref={audioRef}
+        controls
+        onPlay={handlePlay}
+        onPause={handlePause}
+        onEnded={handleEnded}
+      />
 
-      <div
-        style={{
-          marginTop: "20px",
-          display: "flex",
-          justifyContent: "space-between",
-        }}
-      >
-        <div style={{ width: "100%" }}>
-          <h2>Pitch Detector</h2>
-          <PitchVisualizer
-            micNoteRanges={micNoteRanges}
-            mp3NoteRanges={mp3NoteRanges}
-          />{" "}
-          {/* Pass both ranges */}
-          <p style={{ fontSize: "24px" }}>
-            Note: {micPitch ? currentMicNote : "No note detected"}
-          </p>
-        </div>
-
-        <div style={{ width: "48%" }}>
-          {/* Pass both ranges */}
-          <p style={{ fontSize: "24px" }}>
-            Note: {mp3Pitch ? currentMp3Note : "No note detected"}
-          </p>
-          <p style={{ fontSize: "24px" }}>Score: {score}</p>
-        </div>
-      </div>
+      <PitchVisualizer
+        micPitch={micPitch}
+        mp3Pitch={mp3Pitch}
+        currentMicNote={currentMicNote}
+        currentMp3Note={currentMp3Note}
+        score={score}
+      />
     </div>
   );
 };

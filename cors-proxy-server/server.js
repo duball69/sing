@@ -10,7 +10,9 @@ app.use(cors());
 //https://rapidapi.com/ytjar/api/youtube-mp36
 
 // Replace with your RapidAPI key
-const API_KEY = "e0a4a7e079msh2d3bd6eecf1c74fp12ba85jsnaab86c305b67";
+const API_KEY = "98062a1219msh782603d97383d24p1803cejsn97d53aec1e62";
+//98062a1219msh782603d97383d24p1803cejsn97d53aec1e62
+//e0a4a7e079msh2d3bd6eecf1c74fp12ba85jsnaab86c305b67
 
 app.get("/download-mp3", async (req, res) => {
   const { videoId } = req.query;

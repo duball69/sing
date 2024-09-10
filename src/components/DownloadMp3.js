@@ -1,22 +1,20 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
+import "./DownloadMp3.css";
 
-//https://rapidapi.com/ytjar/api/youtube-mp36/
+//const API_KEY = "55e68a52fbmsh91bd7fe14f7572fp1ea3d3jsn906b3acc22ed";
+const API_KEY = "98062a1219msh782603d97383d24p1803cejsn97d53aec1e62";
 
-const API_KEY = "55e68a52fbmsh91bd7fe14f7572fp1ea3d3jsn906b3acc22ed";
-
-function DownloadMp3({ videoId, onAudioLoaded }) {
+function DownloadMp3({ videoId, isPlaying, togglePlay, onMp3Ready }) {
   const [audioSrc, setAudioSrc] = useState(null);
+  const audioRef = useRef(null);
 
   useEffect(() => {
     const handleDownload = async () => {
       if (videoId) {
-        const url = `https://youtube-mp36.p.rapidapi.com/dl?id=${videoId}`;
+        // Update the URL to point to your local server
+        const url = `http://localhost:5000/download-mp3?videoId=${videoId}`; // Adjust the URL if deployed
         const options = {
           method: "GET",
-          headers: {
-            "x-rapidapi-key": API_KEY,
-            "x-rapidapi-host": "youtube-mp36.p.rapidapi.com",
-          },
         };
 
         try {
@@ -25,7 +23,7 @@ function DownloadMp3({ videoId, onAudioLoaded }) {
 
           if (result.link) {
             setAudioSrc(result.link);
-            onAudioLoaded(result.link);
+            if (onMp3Ready) onMp3Ready(result.link); // Notify parent with MP3 URL
           } else {
             console.error("Error fetching MP3 URL:", result);
           }
@@ -36,10 +34,25 @@ function DownloadMp3({ videoId, onAudioLoaded }) {
     };
 
     handleDownload();
-  }, [videoId, onAudioLoaded]);
+  }, [videoId]);
+
+  useEffect(() => {
+    if (audioRef.current) {
+      if (isPlaying) {
+        audioRef.current.play();
+      } else {
+        audioRef.current.pause();
+      }
+    }
+  }, [isPlaying]);
 
   return audioSrc ? (
-    <audio src={audioSrc} controls style={{ width: "100%" }} />
+    <div className="audio-player">
+      <button className="play-button" onClick={togglePlay}>
+        {isPlaying ? "Pause" : "Play"}
+      </button>
+      <audio ref={audioRef} src={audioSrc} onEnded={() => togglePlay(false)} />
+    </div>
   ) : (
     <p>Loading audio...</p>
   );
